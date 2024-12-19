@@ -13,15 +13,14 @@ import { NavBar } from "@/components/nav-bar"
 import { Slider } from "@/components/ui/slider"
 import { Input } from "@/components/ui/input"
 import { SessionList } from "@/components/session-list"
-import { formatDuration, toLocalISOString, fromLocalISOString } from "@/lib/utils"
-import type { Project, WorkSession } from '@/lib/types'
-import styles from './page.module.css'
 import { SignInDialog } from "@/components/sign-in-dialog"
+import { ActiveSession } from "@/components/active-session"
+import { formatDuration, formatExactDuration, toLocalISOString, fromLocalISOString } from "@/lib/utils"
+import { createBackend } from '@/lib/backend'
+import type { Project, WorkSession } from '@/lib/types'
 
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>([])
-  const [activeSession, setActiveSession] = useState<WorkSession | null>(null)
-  const [elapsedTime, setElapsedTime] = useState<number>(0)
   const [expandedProjectId, setExpandedProjectId] = useState<number | null>(null)
   const [projectSessions, setProjectSessions] = useState<Record<number, WorkSession[]>>({})
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -30,112 +29,62 @@ export default function Home() {
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
   const [customStartTime, setCustomStartTime] = useState<string>('')
   const [customEndTime, setCustomEndTime] = useState<string>('')
-  const [editingSession, setEditingSession] = useState<WorkSession | null>(null)
+  const [activeSession, setActiveSession] = useState<WorkSession | null>(null)
+  const [elapsedTime, setElapsedTime] = useState(0)
+
+  // For editing sessions
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [editingSession, setEditingSession] = useState<WorkSession | null>(null)
+  const [editName, setEditName] = useState('')
   const [editStartTime, setEditStartTime] = useState('')
   const [editEndTime, setEditEndTime] = useState('')
-  const [editName, setEditName] = useState('')
+
   const supabase = createClient()
+  const backend = createBackend()
 
-  // Load active session from localStorage on mount
   useEffect(() => {
-    const storedSessionId = localStorage.getItem('activeSessionId')
-    if (storedSessionId) {
-      loadActiveSession(parseInt(storedSessionId))
+    const loadProjects = async () => {
+      const projects = await backend.getProjects()
+      setProjects(projects)
     }
+    loadProjects()
   }, [])
 
-  // Load expanded project state from localStorage
   useEffect(() => {
-    const savedExpandedId = localStorage.getItem('expandedProjectId')
-    if (savedExpandedId) {
-      setExpandedProjectId(parseInt(savedExpandedId))
+    const loadActiveSession = async () => {
+      const session = await backend.getActiveSession()
+      setActiveSession(session)
+      if (session) {
+        const duration = Math.floor((Date.now() - new Date(session.created_at).getTime()) / 1000)
+        setElapsedTime(duration)
+      }
     }
-  }, [])
+    loadActiveSession()
 
-  // Timer effect for active session
-  useEffect(() => {
-    let interval: NodeJS.Timeout
-    if (activeSession && !activeSession.ended_at) {
-      interval = setInterval(() => {
-        const startTime = new Date(activeSession.created_at).getTime()
-        const elapsed = Math.floor((Date.now() - startTime) / 1000)
-        setElapsedTime(elapsed)
-      }, 1000)
-    }
+    // Update elapsed time every second for active session
+    const interval = setInterval(async () => {
+      const session = await backend.getActiveSession()
+      if (session) {
+        const duration = Math.floor((Date.now() - new Date(session.created_at).getTime()) / 1000)
+        setElapsedTime(duration)
+      }
+    }, 1000)
+
     return () => clearInterval(interval)
-  }, [activeSession])
-
-  // Load projects
-  useEffect(() => {
-    const fetchProjects = async () => {
-      const { data, error } = await supabase
-        .from('projects')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (error) {
-        console.error('Error fetching projects:', error)
-      } else {
-        setProjects(data || [])
-      }
-    }
-
-    fetchProjects()
   }, [])
 
-  // Load sessions for expanded project
   useEffect(() => {
-    const fetchProjectSessions = async (projectId: number) => {
-      const { data, error } = await supabase
-        .from('work_sessions')
-        .select('*')
-        .eq('project_id', projectId)
-        .order('created_at', { ascending: false })
-        .limit(5)
+    if (!expandedProjectId) return
 
-      if (error) {
-        console.error('Error fetching sessions:', error)
-      } else {
-        setProjectSessions(prev => ({
-          ...prev,
-          [projectId]: data || []
-        }))
-      }
+    const loadSessions = async () => {
+      const sessions = await backend.getSessions(expandedProjectId)
+      setProjectSessions(prev => ({
+        ...prev,
+        [expandedProjectId]: sessions
+      }))
     }
-
-    if (expandedProjectId) {
-      fetchProjectSessions(expandedProjectId)
-    }
+    loadSessions()
   }, [expandedProjectId])
-
-  const loadActiveSession = async (sessionId: number) => {
-    const { data, error } = await supabase
-      .from('work_sessions')
-      .select('*')
-      .eq('id', sessionId)
-      .single()
-
-    if (error) {
-      console.error('Error loading active session:', error)
-      localStorage.removeItem('activeSessionId')
-    } else if (data && !data.ended_at) {
-      setActiveSession(data)
-    }
-  }
-
-  const initiateSession = async (projectId: number) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    
-    if (!user) {
-      setIsSignInDialogOpen(true)
-      return
-    }
-
-    setSelectedProjectId(projectId)
-    setSessionName('')
-    setIsDialogOpen(true)
-  }
 
   const startSession = async () => {
     if (!selectedProjectId || !sessionName.trim()) return
@@ -152,170 +101,59 @@ export default function Home() {
       ? Math.floor((new Date(endTime).getTime() - new Date(startTime).getTime()) / 1000)
       : 0
 
-    const { data, error } = await supabase
-      .from('work_sessions')
-      .insert([
-        {
-          project_id: selectedProjectId,
-          name: sessionName.trim(),
-          category: 'work',
-          duration: duration,
-          created_at: startTime,
-          ended_at: endTime,
-        }
-      ])
-      .select()
-      .single()
+    const session = await backend.createSession({
+      project_id: selectedProjectId,
+      name: sessionName.trim(),
+      category: 'work',
+      duration: duration,
+      created_at: startTime,
+      ended_at: endTime,
+    })
 
-    if (error) {
-      console.error('Error starting session:', error)
-    } else {
-      setActiveSession(data)
-      localStorage.setItem('activeSessionId', data.id.toString())
+    if (!endTime) {
+      await backend.setActiveSession(session.id)
+      setActiveSession(session)
       setElapsedTime(0)
-      setIsDialogOpen(false)
+    }
 
-      // Refresh sessions if the project is expanded
-      if (expandedProjectId === selectedProjectId) {
-        const { data: sessions } = await supabase
-          .from('work_sessions')
-          .select('*')
-          .eq('project_id', selectedProjectId)
-          .order('created_at', { ascending: false })
-          .limit(5)
+    setIsDialogOpen(false)
+    setSessionName('')
+    setCustomStartTime('')
+    setCustomEndTime('')
 
-        if (sessions) {
-          setProjectSessions(prev => ({
-            ...prev,
-            [selectedProjectId]: sessions
-          }))
-        }
-      }
+    // Refresh sessions if the project is expanded
+    if (expandedProjectId === selectedProjectId) {
+      const sessions = await backend.getSessions(selectedProjectId)
+      setProjectSessions(prev => ({
+        ...prev,
+        [selectedProjectId]: sessions
+      }))
     }
   }
 
   const endSession = async () => {
     if (!activeSession) return
 
-    console.log('Ending session:', activeSession)
+    const endTime = new Date().toISOString()
+    const duration = Math.floor((new Date(endTime).getTime() - new Date(activeSession.created_at).getTime()) / 1000)
 
-    const now = new Date()
-    const startTime = new Date(activeSession.created_at)
-    const duration = Math.floor((now.getTime() - startTime.getTime()) / 1000)
-
-    const { error } = await supabase
-      .from('work_sessions')
-      .update({
-        ended_at: now.toISOString(),
-        duration: duration
-      })
-      .eq('id', activeSession.id)
-
-    if (error) {
-      console.error('Error ending session:', error)
-    } else {
-      console.log('Session ended successfully')
-      setActiveSession(null)
-      localStorage.removeItem('activeSessionId')
-      setElapsedTime(0)
-
-      // Refresh sessions if the project is expanded
-      if (expandedProjectId === activeSession.project_id) {
-        const { data: sessions } = await supabase
-          .from('work_sessions')
-          .select('*')
-          .eq('project_id', activeSession.project_id)
-          .order('created_at', { ascending: false })
-          .limit(5)
-
-        if (sessions) {
-          setProjectSessions(prev => ({
-            ...prev,
-            [activeSession.project_id]: sessions
-          }))
-        }
-      }
-    }
-  }
-
-  const formatTime = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600)
-    const minutes = Math.floor((seconds % 3600) / 60)
-    const remainingSeconds = seconds % 60
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: 'numeric'
+    await backend.updateSession(activeSession.id, {
+      ended_at: endTime,
+      duration: duration
     })
-  }
+    await backend.setActiveSession(null)
+    
+    setActiveSession(null)
+    setElapsedTime(0)
 
-  const formatDuration = (milliseconds: number) => {
-    const seconds = Math.floor(milliseconds / 1000)
-    const hours = Math.floor(seconds / 3600)
-    const minutes = Math.floor((seconds % 3600) / 60)
-    const remainingSeconds = seconds % 60
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
-  }
-
-  const toggleProject = (projectId: number) => {
-    const newExpandedId = expandedProjectId === projectId ? null : projectId
-    setExpandedProjectId(newExpandedId)
-    if (newExpandedId) {
-      localStorage.setItem('expandedProjectId', newExpandedId.toString())
-    } else {
-      localStorage.removeItem('expandedProjectId')
+    // Refresh sessions if the project is expanded
+    if (expandedProjectId === activeSession.project_id) {
+      const sessions = await backend.getSessions(activeSession.project_id)
+      setProjectSessions(prev => ({
+        ...prev,
+        [activeSession.project_id]: sessions
+      }))
     }
-  }
-
-  const openStartSessionDialog = (projectId: number) => {
-    initiateSession(projectId)
-  }
-
-  const updateSessionDuration = async (session: WorkSession, newDuration: number) => {
-    const startTime = new Date(session.created_at)
-    const newEndTime = new Date(startTime.getTime() + newDuration * 1000)
-
-    const { error } = await supabase
-      .from('work_sessions')
-      .update({
-        ended_at: newEndTime.toISOString(),
-        duration: newDuration
-      })
-      .eq('id', session.id)
-
-    if (error) {
-      console.error('Error updating session:', error)
-    } else {
-      // Refresh sessions
-      if (expandedProjectId === session.project_id) {
-        const { data: sessions } = await supabase
-          .from('work_sessions')
-          .select('*')
-          .eq('project_id', session.project_id)
-          .order('created_at', { ascending: false })
-          .limit(5)
-
-        if (sessions) {
-          setProjectSessions(prev => ({
-            ...prev,
-            [session.project_id]: sessions
-          }))
-        }
-      }
-    }
-  }
-
-  const openEditDialog = (session: WorkSession) => {
-    setEditingSession(session)
-    setEditName(session.name)
-    setEditStartTime(toLocalISOString(new Date(session.created_at)))
-    setEditEndTime(session.ended_at ? toLocalISOString(new Date(session.ended_at)) : '')
-    setIsEditDialogOpen(true)
   }
 
   const updateSession = async () => {
@@ -327,73 +165,88 @@ export default function Home() {
       ? Math.floor((new Date(endTime).getTime() - new Date(startTime).getTime()) / 1000)
       : 0
 
-    const { error } = await supabase
-      .from('work_sessions')
-      .update({
-        name: editName.trim(),
-        created_at: startTime,
-        ended_at: endTime,
-        duration: duration
-      })
-      .eq('id', editingSession.id)
+    await backend.updateSession(editingSession.id, {
+      name: editName.trim(),
+      created_at: startTime,
+      ended_at: endTime,
+      duration: duration
+    })
 
-    if (error) {
-      console.error('Error updating session:', error)
+    setIsEditDialogOpen(false)
+    
+    // Refresh sessions if the project is expanded
+    if (expandedProjectId === editingSession.project_id) {
+      const sessions = await backend.getSessions(editingSession.project_id)
+      setProjectSessions(prev => ({
+        ...prev,
+        [editingSession.project_id]: sessions
+      }))
+    }
+  }
+
+  const initiateSession = async (projectId: number) => {
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    if (!user) {
+      setIsSignInDialogOpen(true)
+      return
+    }
+
+    if (activeSession) {
+      alert('Please end the current session before starting a new one')
+      return
+    }
+
+    setSelectedProjectId(projectId)
+    setSessionName('')
+    setIsDialogOpen(true)
+  }
+
+  const openEditDialog = (session: WorkSession) => {
+    setEditingSession(session)
+    setEditName(session.name)
+    setEditStartTime(toLocalISOString(new Date(session.created_at)))
+    setEditEndTime(session.ended_at ? toLocalISOString(new Date(session.ended_at)) : '')
+    setIsEditDialogOpen(true)
+  }
+
+  useEffect(() => {
+    const savedExpandedId = localStorage.getItem('expandedProjectId')
+    if (savedExpandedId) {
+      setExpandedProjectId(parseInt(savedExpandedId))
+    }
+  }, [])
+
+  const toggleProject = (projectId: number) => {
+    const newExpandedId = expandedProjectId === projectId ? null : projectId
+    setExpandedProjectId(newExpandedId)
+    if (newExpandedId) {
+      localStorage.setItem('expandedProjectId', newExpandedId.toString())
     } else {
-      setIsEditDialogOpen(false)
-      // Refresh sessions if the project is expanded
-      if (expandedProjectId === editingSession.project_id) {
-        const { data: sessions } = await supabase
-          .from('work_sessions')
-          .select('*')
-          .eq('project_id', editingSession.project_id)
-          .order('created_at', { ascending: false })
-          .limit(5)
-
-        if (sessions) {
-          setProjectSessions(prev => ({
-            ...prev,
-            [editingSession.project_id]: sessions
-          }))
-        }
-      }
-      // Update active session if we're editing it
-      if (activeSession?.id === editingSession.id) {
-        loadActiveSession(editingSession.id)
-      }
+      localStorage.removeItem('expandedProjectId')
     }
   }
 
   return (
     <div className="container mx-auto p-4">
       <NavBar />
+      
       {/* Active Session Display */}
       {activeSession && (
-        <div className="mb-8 bg-primary/5 p-6 rounded-lg border border-primary/10">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold">{activeSession.name}</h2>
-              <p className="text-sm text-muted-foreground">
-                Started {new Date(activeSession.created_at).toLocaleString()}
-              </p>
-            </div>
-            <div className="flex items-center space-x-4">
-              <div className="text-xl font-mono">
-                {formatDuration(elapsedTime * 1000)}
-              </div>
-              <button
-                onClick={endSession}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90 h-9 px-4 py-2 rounded-md text-sm"
-              >
-                End Session
-              </button>
-            </div>
-          </div>
-        </div>
+        <ActiveSession
+          session={activeSession}
+          elapsedTime={elapsedTime}
+          onEnd={endSession}
+          onUpdate={async (updates) => {
+            const updatedSession = await backend.updateSession(activeSession.id, updates)
+            setActiveSession(updatedSession)
+          }}
+          variant="full"
+        />
       )}
 
       {/* Projects List */}
-      <div className="grid gap-4">
+      <div className="space-y-4">
         {projects.map((project) => (
           <div key={project.id} className="border rounded-lg overflow-hidden transition-all duration-200 hover:border-primary/20">
             <div 

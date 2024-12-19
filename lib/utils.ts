@@ -22,6 +22,17 @@ export function formatDuration(ms: number): string {
   return `${hours} hour${hours !== 1 ? 's' : ''}, ${minutes} minute${minutes !== 1 ? 's' : ''}`
 }
 
+export function formatExactDuration(seconds: number): string {
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const remainingSeconds = seconds % 60
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
+  }
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+}
+
 export function toLocalISOString(date: Date): string {
   const tzOffset = date.getTimezoneOffset() * 60000 // offset in milliseconds
   const localISOTime = (new Date(date.getTime() - tzOffset)).toISOString().slice(0, 16)
