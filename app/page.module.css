@@ -1,0 +1,60 @@
+/* Fade in/out animations */
+.fadeIn {
+  animation: fadeIn 0.2s ease-in;
+}
+
+.fadeOut {
+  animation: fadeOut 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+/* Expand/collapse animations */
+.expandSection {
+  max-height: 1000px;
+  opacity: 1;
+  transition: max-height 0.3s ease-in-out, opacity 0.2s ease-in-out;
+}
+
+.collapseSection {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease-in-out, opacity 0.2s ease-in-out;
+}
+
+/* Active session animation */
+.activeSession {
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

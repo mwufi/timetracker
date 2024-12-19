@@ -3,13 +3,13 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import Image from 'next/image'
-import { motion, AnimatePresence } from 'framer-motion'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import styles from './page.module.css'
 
 interface Project {
   id: number
@@ -231,116 +231,80 @@ export default function Home() {
     })
   }
 
+  const toggleProject = (projectId: number) => {
+    setExpandedProjectId(expandedProjectId === projectId ? null : projectId)
+  }
+
+  const openStartSessionDialog = (projectId: number) => {
+    initiateSession(projectId)
+  }
+
   return (
     <div className="max-w-4xl mx-auto p-8">
-      {/* Active Session Timer */}
-      <AnimatePresence>
-        {activeSession && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="fixed top-4 right-4 bg-white p-6 rounded-lg shadow-lg border-2 border-indigo-500"
+      {/* Active Session Display */}
+      {activeSession && (
+        <div className={`mb-8 p-4 border rounded-lg shadow-sm ${styles.activeSession}`}>
+          <h3 className="text-lg font-semibold mb-2">Current Session</h3>
+          <p>{activeSession.name}</p>
+          <p>Time: {formatTime(elapsedTime)}</p>
+          <button
+            onClick={endSession}
+            className="mt-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
           >
-            <div className="text-sm text-gray-600 mb-1">{activeSession.name}</div>
-            <div className="text-2xl font-mono mb-2">{formatTime(elapsedTime)}</div>
-            <button
-              onClick={endSession}
-              className="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600"
-            >
-              End Session
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            End Session
+          </button>
+        </div>
+      )}
 
       {/* Projects List */}
-      <div className="space-y-6">
+      <div className="space-y-4">
         {projects.map((project) => (
-          <motion.div
+          <div
             key={project.id}
-            layout
-            className="border rounded-lg overflow-hidden shadow-lg"
+            className="border rounded-lg overflow-hidden"
           >
-            <motion.div
-              className="p-6 cursor-pointer"
-              onClick={() => setExpandedProjectId(expandedProjectId === project.id ? null : project.id)}
+            <div 
+              className="p-4 cursor-pointer"
+              onClick={() => toggleProject(project.id)}
             >
-              <div className="flex items-start space-x-6">
-                {project.header_img && (
-                  <div className="relative w-48 h-32 flex-shrink-0">
-                    <Image
-                      src={project.header_img}
-                      alt={project.name}
-                      fill
-                      className="object-cover rounded-lg"
-                    />
-                  </div>
-                )}
-                <div className="flex-grow">
-                  <h3 className="text-xl font-bold mb-2">{project.name}</h3>
-                  <p className="text-gray-600 mb-4">{project.description}</p>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      initiateSession(project.id)
-                    }}
-                    disabled={!!activeSession}
-                    className={`py-2 px-4 rounded-md ${activeSession
-                        ? 'bg-gray-300 cursor-not-allowed'
-                        : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                      }`}
-                  >
-                    Start Session
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-
-            <AnimatePresence>
-              {expandedProjectId === project.id && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ 
-                    type: "spring",
-                    stiffness: 500,
-                    damping: 30,
-                    opacity: { duration: 0.2 }
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-semibold">{project.name}</h3>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openStartSessionDialog(project.id);
                   }}
-                  style={{ overflow: 'hidden' }}
-                  className="space-y-4"
+                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
                 >
-                  <div className="p-6">
-                    <h4 className="text-lg font-semibold mb-4">Recent Sessions</h4>
-                    <div className="space-y-4">
-                      {projectSessions[project.id]?.map((session) => (
-                        <div key={session.id} className="bg-white p-4 rounded-lg shadow">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <div className="font-medium">{session.name}</div>
-                              <div className="text-sm text-gray-500">
-                                {formatDate(session.created_at)}
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="font-mono">
-                                {formatTime(session.duration || 0)}
-                              </div>
-                              <div className="text-sm text-gray-500">
-                                {session.ended_at ? 'Completed' : 'In Progress'}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                  Start Session
+                </button>
+              </div>
+              <p className="mt-2 text-gray-600">{project.description}</p>
+            </div>
+
+            <div className={expandedProjectId === project.id ? styles.expandSection : styles.collapseSection}>
+              <div className="border-t p-6 space-y-4">
+                <h4 className="text-lg font-semibold">Recent Sessions</h4>
+                {projectSessions[project.id]?.length > 0 ? (
+                  <div className="space-y-2">
+                    {projectSessions[project.id].map((session) => (
+                      <div
+                        key={session.id}
+                        className={`p-3 bg-gray-50 rounded ${styles.fadeIn}`}
+                      >
+                        <p className="font-medium">{session.name}</p>
+                        <p className="text-sm text-gray-600">
+                          Duration: {formatTime(session.duration)}
+                        </p>
+                      </div>
+                    ))}
                   </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
+                ) : (
+                  <p className="text-gray-500">No sessions yet</p>
+                )}
+              </div>
+            </div>
+          </div>
         ))}
       </div>
 
