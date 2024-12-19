@@ -1,35 +1,32 @@
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { NavUser } from './nav-user'
 
 export function NavBar() {
-  const pathname = usePathname()
-
   return (
-    <nav className="flex items-center space-x-4 lg:space-x-6 mb-8">
-      <Link
-        href="/"
-        className={`text-sm font-medium transition-colors hover:text-primary ${
-          pathname === '/' ? 'text-primary' : 'text-muted-foreground'
-        }`}
-      >
-        Home
-      </Link>
-      <Link
-        href="/add"
-        className={`text-sm font-medium transition-colors hover:text-primary ${
-          pathname === '/add' ? 'text-primary' : 'text-muted-foreground'
-        }`}
-      >
-        Add New
-      </Link>
-      <Link
-        href="/stats"
-        className={`text-sm font-medium transition-colors hover:text-primary ${
-          pathname === '/stats' ? 'text-primary' : 'text-muted-foreground'
-        }`}
-      >
-        Stats
-      </Link>
+    <nav className="flex items-center justify-between py-4 mb-8">
+      <div className="flex items-center space-x-8">
+        <Link
+          href="/"
+          className="text-xl font-bold hover:text-primary transition-colors"
+        >
+          Flow
+        </Link>
+        <div className="flex items-center space-x-4">
+          <Link
+            href="/stats"
+            className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+          >
+            Stats
+          </Link>
+          <Link
+            href="/add"
+            className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+          >
+            Add Session
+          </Link>
+        </div>
+      </div>
+      <NavUser />
     </nav>
   )
 }
