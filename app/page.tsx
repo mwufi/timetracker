@@ -16,6 +16,7 @@ import { SessionList } from "@/components/session-list"
 import { formatDuration, toLocalISOString, fromLocalISOString } from "@/lib/utils"
 import type { Project, WorkSession } from '@/lib/types'
 import styles from './page.module.css'
+import { SignInDialog } from "@/components/sign-in-dialog"
 
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>([])
@@ -24,6 +25,7 @@ export default function Home() {
   const [expandedProjectId, setExpandedProjectId] = useState<number | null>(null)
   const [projectSessions, setProjectSessions] = useState<Record<number, WorkSession[]>>({})
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [isSignInDialogOpen, setIsSignInDialogOpen] = useState(false)
   const [sessionName, setSessionName] = useState('')
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
   const [customStartTime, setCustomStartTime] = useState<string>('')
@@ -122,11 +124,14 @@ export default function Home() {
     }
   }
 
-  const initiateSession = (projectId: number) => {
-    if (activeSession) {
-      alert('Please end the current session before starting a new one')
+  const initiateSession = async (projectId: number) => {
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    if (!user) {
+      setIsSignInDialogOpen(true)
       return
     }
+
     setSelectedProjectId(projectId)
     setSessionName('')
     setIsDialogOpen(true)
@@ -520,6 +525,10 @@ export default function Home() {
         </DialogContent>
       </Dialog>
 
+      <SignInDialog 
+        open={isSignInDialogOpen} 
+        onOpenChange={setIsSignInDialogOpen} 
+      />
     </div>
   )
 }
