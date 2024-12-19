@@ -9,6 +9,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { NavBar } from "@/components/nav-bar"
+import { Slider } from "@/components/ui/slider"
+import { Input } from "@/components/ui/input"
 import styles from './page.module.css'
 
 interface Project {
@@ -37,6 +40,13 @@ export default function Home() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [sessionName, setSessionName] = useState('')
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
+  const [customStartTime, setCustomStartTime] = useState<string>('')
+  const [customEndTime, setCustomEndTime] = useState<string>('')
+  const [editingSession, setEditingSession] = useState<WorkSession | null>(null)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [editStartTime, setEditStartTime] = useState('')
+  const [editEndTime, setEditEndTime] = useState('')
+  const [editName, setEditName] = useState('')
   const supabase = createClient()
 
   // Load active session from localStorage on mount
@@ -44,6 +54,14 @@ export default function Home() {
     const storedSessionId = localStorage.getItem('activeSessionId')
     if (storedSessionId) {
       loadActiveSession(parseInt(storedSessionId))
+    }
+  }, [])
+
+  // Load expanded project state from localStorage
+  useEffect(() => {
+    const savedExpandedId = localStorage.getItem('expandedProjectId')
+    if (savedExpandedId) {
+      setExpandedProjectId(parseInt(savedExpandedId))
     }
   }, [])
 
@@ -131,6 +149,18 @@ export default function Home() {
   const startSession = async () => {
     if (!selectedProjectId || !sessionName.trim()) return
 
+    const startTime = customStartTime 
+      ? new Date(customStartTime).toISOString()
+      : new Date().toISOString()
+    
+    const endTime = customEndTime 
+      ? new Date(customEndTime).toISOString()
+      : null
+
+    const duration = endTime 
+      ? Math.floor((new Date(endTime).getTime() - new Date(startTime).getTime()) / 1000)
+      : 0
+
     const { data, error } = await supabase
       .from('work_sessions')
       .insert([
@@ -138,7 +168,9 @@ export default function Home() {
           project_id: selectedProjectId,
           name: sessionName.trim(),
           category: 'work',
-          duration: 0,
+          duration: duration,
+          created_at: startTime,
+          ended_at: endTime,
         }
       ])
       .select()
@@ -231,16 +263,119 @@ export default function Home() {
     })
   }
 
+  const formatDuration = (milliseconds: number) => {
+    const seconds = Math.floor(milliseconds / 1000)
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    const remainingSeconds = seconds % 60
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
+  }
+
   const toggleProject = (projectId: number) => {
-    setExpandedProjectId(expandedProjectId === projectId ? null : projectId)
+    const newExpandedId = expandedProjectId === projectId ? null : projectId
+    setExpandedProjectId(newExpandedId)
+    if (newExpandedId) {
+      localStorage.setItem('expandedProjectId', newExpandedId.toString())
+    } else {
+      localStorage.removeItem('expandedProjectId')
+    }
   }
 
   const openStartSessionDialog = (projectId: number) => {
     initiateSession(projectId)
   }
 
+  const updateSessionDuration = async (session: WorkSession, newDuration: number) => {
+    const startTime = new Date(session.created_at)
+    const newEndTime = new Date(startTime.getTime() + newDuration * 1000)
+
+    const { error } = await supabase
+      .from('work_sessions')
+      .update({
+        ended_at: newEndTime.toISOString(),
+        duration: newDuration
+      })
+      .eq('id', session.id)
+
+    if (error) {
+      console.error('Error updating session:', error)
+    } else {
+      // Refresh sessions
+      if (expandedProjectId === session.project_id) {
+        const { data: sessions } = await supabase
+          .from('work_sessions')
+          .select('*')
+          .eq('project_id', session.project_id)
+          .order('created_at', { ascending: false })
+          .limit(5)
+
+        if (sessions) {
+          setProjectSessions(prev => ({
+            ...prev,
+            [session.project_id]: sessions
+          }))
+        }
+      }
+    }
+  }
+
+  const openEditDialog = (session: WorkSession) => {
+    setEditingSession(session)
+    setEditName(session.name)
+    setEditStartTime(session.created_at.slice(0, 16)) // Format for datetime-local input
+    setEditEndTime(session.ended_at?.slice(0, 16) || '')
+    setIsEditDialogOpen(true)
+  }
+
+  const updateSession = async () => {
+    if (!editingSession) return
+
+    const startTime = new Date(editStartTime).toISOString()
+    const endTime = editEndTime ? new Date(editEndTime).toISOString() : null
+    const duration = endTime 
+      ? Math.floor((new Date(endTime).getTime() - new Date(startTime).getTime()) / 1000)
+      : 0
+
+    const { error } = await supabase
+      .from('work_sessions')
+      .update({
+        name: editName.trim(),
+        created_at: startTime,
+        ended_at: endTime,
+        duration: duration
+      })
+      .eq('id', editingSession.id)
+
+    if (error) {
+      console.error('Error updating session:', error)
+    } else {
+      setIsEditDialogOpen(false)
+      // Refresh sessions if the project is expanded
+      if (expandedProjectId === editingSession.project_id) {
+        const { data: sessions } = await supabase
+          .from('work_sessions')
+          .select('*')
+          .eq('project_id', editingSession.project_id)
+          .order('created_at', { ascending: false })
+          .limit(5)
+
+        if (sessions) {
+          setProjectSessions(prev => ({
+            ...prev,
+            [editingSession.project_id]: sessions
+          }))
+        }
+      }
+      // Update active session if we're editing it
+      if (activeSession?.id === editingSession.id) {
+        loadActiveSession(editingSession.id)
+      }
+    }
+  }
+
   return (
-    <div className="max-w-4xl mx-auto p-8">
+    <div className="container mx-auto p-4">
+      <NavBar />
       {/* Active Session Display */}
       {activeSession && (
         <div className={`mb-8 p-4 border rounded-lg shadow-sm ${styles.activeSession}`}>
@@ -257,53 +392,54 @@ export default function Home() {
       )}
 
       {/* Projects List */}
-      <div className="space-y-4">
+      <div className="grid gap-4">
         {projects.map((project) => (
-          <div
-            key={project.id}
-            className="border rounded-lg overflow-hidden"
-          >
+          <div key={project.id} className="border rounded-lg p-4">
             <div 
-              className="p-4 cursor-pointer"
+              className="flex items-center justify-between cursor-pointer"
               onClick={() => toggleProject(project.id)}
             >
-              <div className="flex items-center justify-between">
-                <h3 className="text-xl font-semibold">{project.name}</h3>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openStartSessionDialog(project.id);
-                  }}
-                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                >
-                  Start Session
-                </button>
+              <div>
+                <h2 className="text-xl font-semibold">{project.name}</h2>
+                <p className="text-sm text-muted-foreground">{project.description}</p>
               </div>
-              <p className="mt-2 text-gray-600">{project.description}</p>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  initiateSession(project.id)
+                }}
+                className="bg-primary text-primary-foreground hover:bg-primary/90 h-8 px-3 py-2 rounded-md text-sm"
+              >
+                Start Session
+              </button>
             </div>
 
-            <div className={expandedProjectId === project.id ? styles.expandSection : styles.collapseSection}>
-              <div className="border-t p-6 space-y-4">
-                <h4 className="text-lg font-semibold">Recent Sessions</h4>
-                {projectSessions[project.id]?.length > 0 ? (
-                  <div className="space-y-2">
-                    {projectSessions[project.id].map((session) => (
-                      <div
-                        key={session.id}
-                        className={`p-3 bg-gray-50 rounded ${styles.fadeIn}`}
-                      >
-                        <p className="font-medium">{session.name}</p>
-                        <p className="text-sm text-gray-600">
-                          Duration: {formatTime(session.duration)}
-                        </p>
-                      </div>
-                    ))}
+            {/* Only show sessions when expanded */}
+            {expandedProjectId === project.id && projectSessions[project.id]?.map((session) => (
+              <div key={session.id} className="bg-card p-4 rounded-lg mt-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium">{session.name}</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {new Date(session.created_at).toLocaleString()}
+                      {session.ended_at && (
+                        <> • {formatDuration(session.duration * 1000)}</>
+                      )}
+                    </p>
                   </div>
-                ) : (
-                  <p className="text-gray-500">No sessions yet</p>
-                )}
+                  <div className="flex items-center space-x-2">
+                    {session.ended_at && (
+                      <button
+                        onClick={() => openEditDialog(session)}
+                        className="bg-secondary text-secondary-foreground hover:bg-secondary/90 h-8 px-3 py-2 rounded-md text-sm"
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
+            ))}
           </div>
         ))}
       </div>
@@ -314,41 +450,95 @@ export default function Home() {
           <DialogHeader>
             <DialogTitle>Start New Session</DialogTitle>
           </DialogHeader>
-
           <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <label htmlFor="session-name" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                Session Name
-              </label>
-              <input
-                id="session-name"
-                type="text"
-                value={sessionName}
-                onChange={(e) => setSessionName(e.target.value)}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                placeholder="What are you working on?"
-                autoFocus
+            <Input
+              placeholder="Session name"
+              value={sessionName}
+              onChange={(e) => setSessionName(e.target.value)}
+            />
+            <div className="grid gap-2">
+              <label>Custom Start Time (optional)</label>
+              <Input
+                type="datetime-local"
+                value={customStartTime}
+                onChange={(e) => setCustomStartTime(e.target.value)}
               />
             </div>
-          </div>
-
-          <div className="flex justify-end space-x-4">
-            <button
-              onClick={() => setIsDialogOpen(false)}
-              className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
-            >
-              Cancel
-            </button>
+            <div className="grid gap-2">
+              <label>Custom End Time (optional)</label>
+              <Input
+                type="datetime-local"
+                value={customEndTime}
+                onChange={(e) => setCustomEndTime(e.target.value)}
+              />
+            </div>
             <button
               onClick={startSession}
-              disabled={!sessionName.trim()}
-              className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 rounded-md"
             >
-              Start
+              Start Session
             </button>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Session Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Session</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <Input
+              placeholder="Session name"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+            />
+            <div className="grid gap-2">
+              <label>Start Time</label>
+              <Input
+                type="datetime-local"
+                value={editStartTime}
+                onChange={(e) => setEditStartTime(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <label>End Time</label>
+              <Input
+                type="datetime-local"
+                value={editEndTime}
+                onChange={(e) => setEditEndTime(e.target.value)}
+              />
+            </div>
+            {editingSession && (
+              <div className="space-y-2">
+                <label>Duration</label>
+                <Slider
+                  defaultValue={[editingSession.duration]}
+                  max={24 * 60 * 60} // 24 hours in seconds
+                  step={60} // 1 minute
+                  onValueChange={([value]) => {
+                    // Update end time based on slider
+                    const startTime = new Date(editStartTime)
+                    const newEndTime = new Date(startTime.getTime() + value * 1000)
+                    setEditEndTime(newEndTime.toISOString().slice(0, 16))
+                  }}
+                />
+                <div className="text-sm text-muted-foreground">
+                  Duration: {formatDuration(editingSession.duration * 1000)}
+                </div>
+              </div>
+            )}
+            <button
+              onClick={updateSession}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 rounded-md"
+            >
+              Update Session
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </div>
   )
 }

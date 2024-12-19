@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
+import { NavBar } from "@/components/nav-bar"
 
 interface Project {
   name: string
@@ -131,7 +132,8 @@ export default function AddProjects() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-8">
+    <div className="container mx-auto p-4">
+      <NavBar />
       <h1 className="text-3xl font-bold mb-8">Add Project</h1>
       <form onSubmit={handleSubmit} className="space-y-8">
         {projects.map((project, index) => (
