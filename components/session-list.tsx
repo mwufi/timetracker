@@ -4,21 +4,14 @@ import { useMemo } from 'react'
 import { formatDuration } from '@/lib/utils'
 import Image from 'next/image'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-
-interface Session {
-  id: number
-  name: string
-  created_at: string
-  ended_at: string | null
-  duration: number
-}
+import type { WorkSession } from '@/lib/types'
 
 interface SessionListProps {
-  sessions: Session[]
-  onEditSession: (session: Session) => void
+  sessions: WorkSession[]
+  onEditSession: (session: WorkSession) => void
 }
 
-function groupSessionsByDate(sessions: Session[]) {
+function groupSessionsByDate(sessions: WorkSession[]) {
   const groups = sessions.reduce((acc, session) => {
     const date = new Date(session.created_at)
     const today = new Date()
@@ -43,7 +36,7 @@ function groupSessionsByDate(sessions: Session[]) {
     }
     acc[dateKey].push(session)
     return acc
-  }, {} as Record<string, Session[]>)
+  }, {} as Record<string, WorkSession[]>)
 
   return Object.entries(groups).sort((a, b) => {
     if (a[0] === 'Today') return -1

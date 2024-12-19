@@ -13,25 +13,9 @@ import { NavBar } from "@/components/nav-bar"
 import { Slider } from "@/components/ui/slider"
 import { Input } from "@/components/ui/input"
 import { SessionList } from "@/components/session-list"
-import styles from './page.module.css'
 import { formatDuration, toLocalISOString, fromLocalISOString } from "@/lib/utils"
-
-interface Project {
-  id: number
-  name: string
-  description: string
-  header_img: string
-}
-
-interface WorkSession {
-  id: number
-  project_id: number
-  name: string
-  category: string
-  duration: number
-  created_at: string
-  ended_at: string | null
-}
+import type { Project, WorkSession } from '@/lib/types'
+import styles from './page.module.css'
 
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>([])
