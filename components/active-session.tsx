@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input"
 
 interface ActiveSessionProps {
   session: WorkSession
-  elapsedTime: number
   onEnd: () => void
   onUpdate: (updates: Partial<WorkSession>) => void
   variant?: 'compact' | 'full'
@@ -16,7 +15,6 @@ interface ActiveSessionProps {
 
 export function ActiveSession({ 
   session, 
-  elapsedTime, 
   onEnd,
   onUpdate,
   variant = 'full' 
@@ -24,7 +22,24 @@ export function ActiveSession({
   const [isExpanded, setIsExpanded] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(session.name)
+  const [elapsedTime, setElapsedTime] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Update elapsed time every second
+  useEffect(() => {
+    const updateElapsedTime = () => {
+      const duration = Math.floor((Date.now() - new Date(session.created_at).getTime()) / 1000)
+      setElapsedTime(duration)
+    }
+
+    // Initial update
+    updateElapsedTime()
+
+    // Update every second
+    const interval = setInterval(updateElapsedTime, 1000)
+
+    return () => clearInterval(interval)
+  }, [session.created_at])
 
   useEffect(() => {
     if (isEditing && inputRef.current) {

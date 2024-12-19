@@ -90,21 +90,47 @@ export class SupabaseBackend implements Backend {
   }
 
   async getActiveSession(): Promise<WorkSession | null> {
-    const storedSessionId = localStorage.getItem('activeSessionId')
-    if (!storedSessionId) return null
-
     const { data, error } = await this.supabase
       .from('work_sessions')
       .select('*')
-      .eq('id', parseInt(storedSessionId))
+      .is('ended_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .single()
 
     if (error) {
-      localStorage.removeItem('activeSessionId')
-      return null
+      if (error.code === 'PGRST116') {
+        // No active session found
+        return null
+      }
+      throw error
     }
 
     return data
+  }
+
+  subscribeToActiveSessions(callback: (session: WorkSession | null) => void): () => void {
+    const subscription = this.supabase
+      .channel('active_sessions')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'work_sessions',
+          filter: 'ended_at=is.null'
+        },
+        async (payload) => {
+          // When a session is updated or inserted, fetch the latest active session
+          const session = await this.getActiveSession()
+          callback(session)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      subscription.unsubscribe()
+    }
   }
 
   async setActiveSession(sessionId: number | null): Promise<void> {

@@ -30,7 +30,6 @@ export default function Home() {
   const [customStartTime, setCustomStartTime] = useState<string>('')
   const [customEndTime, setCustomEndTime] = useState<string>('')
   const [activeSession, setActiveSession] = useState<WorkSession | null>(null)
-  const [elapsedTime, setElapsedTime] = useState(0)
 
   // For editing sessions
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
@@ -50,27 +49,23 @@ export default function Home() {
     loadProjects()
   }, [])
 
+  // Load and subscribe to active session
   useEffect(() => {
+    // Initial load
     const loadActiveSession = async () => {
       const session = await backend.getActiveSession()
       setActiveSession(session)
-      if (session) {
-        const duration = Math.floor((Date.now() - new Date(session.created_at).getTime()) / 1000)
-        setElapsedTime(duration)
-      }
     }
     loadActiveSession()
 
-    // Update elapsed time every second for active session
-    const interval = setInterval(async () => {
-      const session = await backend.getActiveSession()
-      if (session) {
-        const duration = Math.floor((Date.now() - new Date(session.created_at).getTime()) / 1000)
-        setElapsedTime(duration)
-      }
-    }, 1000)
+    // Subscribe to changes
+    const unsubscribe = backend.subscribeToActiveSessions((session) => {
+      setActiveSession(session)
+    })
 
-    return () => clearInterval(interval)
+    return () => {
+      unsubscribe()
+    }
   }, [])
 
   useEffect(() => {
@@ -113,7 +108,6 @@ export default function Home() {
     if (!endTime) {
       await backend.setActiveSession(session.id)
       setActiveSession(session)
-      setElapsedTime(0)
     }
 
     setIsDialogOpen(false)
@@ -144,7 +138,6 @@ export default function Home() {
     await backend.setActiveSession(null)
     
     setActiveSession(null)
-    setElapsedTime(0)
 
     // Refresh sessions if the project is expanded
     if (expandedProjectId === activeSession.project_id) {
@@ -235,7 +228,6 @@ export default function Home() {
       {activeSession && (
         <ActiveSession
           session={activeSession}
-          elapsedTime={elapsedTime}
           onEnd={endSession}
           onUpdate={async (updates) => {
             const updatedSession = await backend.updateSession(activeSession.id, updates)

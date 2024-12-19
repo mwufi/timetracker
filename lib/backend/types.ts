@@ -31,4 +31,5 @@ export interface Backend {
   // Active session operations
   getActiveSession(): Promise<WorkSession | null>
   setActiveSession(sessionId: number | null): Promise<void>
+  subscribeToActiveSessions(callback: (session: WorkSession | null) => void): () => void
 }
