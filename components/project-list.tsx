@@ -34,7 +34,12 @@ export function ProjectList({
   if (!currentUser) {
     return (
       <div className="space-y-6">
-        <h2 className="text-xl font-semibold">Featured Projects</h2>
+        <div className="text-center space-y-3 py-8">
+          <h1 className="text-3xl font-bold tracking-tight">Welcome to Flow</h1>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            Your personal workspace for focused and productive work sessions. Join a project to get started!
+          </p>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {projects.map(project => (
             <ProjectPreviewCard
@@ -49,9 +54,12 @@ export function ProjectList({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Projects</h2>
+    <div className="space-y-6">
+      <div className="space-y-3">
+        <h1 className="text-2xl font-semibold tracking-tight">Your Projects</h1>
+        <p className="text-muted-foreground">
+          Track your progress and start new work sessions. Let's make today productive!
+        </p>
       </div>
       <div className="grid gap-4 sm:gap-6">
         {projects.map(project => (

@@ -70,7 +70,7 @@ export function ProjectCard({
         name: editName,
         created_at: editStartTime,
         ended_at: editEndTime || null,
-        duration: editEndTime 
+        duration: editEndTime
           ? Math.floor((new Date(editEndTime).getTime() - new Date(editStartTime).getTime()) / 1000)
           : selectedSession.duration
       })
@@ -79,23 +79,23 @@ export function ProjectCard({
     }
   }
 
+  const bgColor = project.created_by === currentUser?.id ? "bg-primary" : "bg-secondary"
+
   return (
     <div className="space-y-2">
-      <div 
+      <div
         className={cn(
-          "p-4 rounded-lg bg-card hover:bg-card/80 transition-colors cursor-pointer relative overflow-hidden",
+          "relative p-4 rounded-xl bg-card hover:bg-accent/5 transition-all cursor-pointer overflow-hidden border shadow-sm hover:shadow-md",
+          bgColor + "/5",
           project.created_by === currentUser?.id && "pl-6"
         )}
         onClick={onToggle}
       >
-        {project.created_by === currentUser?.id && (
-          <div className="absolute left-0 top-0 bottom-0 w-2 bg-primary" />
-        )}
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h3 className="font-medium">{project.name}</h3>
-            <p className="text-sm text-muted-foreground">
-              {project.description || 'No description'}
+            <h3 className="font-medium text-lg text-foreground">{project.name}</h3>
+            <p className="text-sm text-muted-foreground line-clamp-2">
+              {project.description || 'Ready to continue your progress? Start a new session!'}
             </p>
           </div>
           <button
@@ -103,7 +103,10 @@ export function ProjectCard({
               e.stopPropagation()
               onNewSession()
             }}
-            className="shrink-0 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+            className={cn(
+              "shrink-0 px-4 py-2.5 rounded-lg transition-colors font-medium",
+              bgColor === "bg-primary" ? "bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/95" : "bg-secondary text-secondary-foreground hover:bg-secondary/90 active:bg-secondary/95"
+            )}
           >
             New Session
           </button>
@@ -122,8 +125,8 @@ export function ProjectCard({
       )}
 
       {/* Edit Session Dialog */}
-      <EditSessionDialog 
-        open={showEditDialog} 
+      <EditSessionDialog
+        open={showEditDialog}
         onOpenChange={setShowEditDialog}
         session={selectedSession}
         editName={editName}
