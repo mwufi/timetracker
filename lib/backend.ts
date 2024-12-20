@@ -70,7 +70,7 @@ export function createBackend() {
       return data
     },
 
-    async getActiveSession(showUniverseMode: boolean = false): Promise<WorkSession | null> {
+    async getActiveSession(showUniverseMode: boolean = false): Promise<WorkSession[]> {
       const { data: { user } } = await supabase.auth.getUser()
       
       let query = supabase
@@ -78,15 +78,16 @@ export function createBackend() {
         .select('*')
         .is('ended_at', null)
         .order('created_at', { ascending: false })
-        .limit(1)
 
       if (!showUniverseMode && user) {
+        // In non-universe mode, only show own sessions
         query = query.eq('created_by', user.id)
       }
+      // In universe mode, show all active sessions
 
       const { data, error } = await query
       if (error) throw error
-      return data?.[0] || null
+      return data || []
     },
 
     async setActiveSession(
@@ -107,7 +108,7 @@ export function createBackend() {
     },
 
     async subscribeToActiveSessions(
-      callback: (session: WorkSession | null) => void,
+      callback: (sessions: WorkSession[]) => void,
       showUniverseMode: boolean = false
     ): Promise<() => void> {
       const { data: { user } } = await supabase.auth.getUser()
@@ -124,8 +125,8 @@ export function createBackend() {
           },
           async () => {
             // On any change to active sessions, fetch the latest
-            const session = await this.getActiveSession(showUniverseMode)
-            callback(session)
+            const sessions = await this.getActiveSession(showUniverseMode)
+            callback(sessions)
           }
         )
 
