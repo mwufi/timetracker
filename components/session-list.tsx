@@ -1,10 +1,12 @@
 "use client"
 
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { formatDuration } from '@/lib/utils'
 import Image from 'next/image'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { WorkSession } from '@/lib/types'
+import { createClient } from '@/utils/supabase/client'
+import type { User } from '@supabase/supabase-js'
 
 interface SessionListProps {
   sessions: WorkSession[]
@@ -48,12 +50,20 @@ function groupSessionsByDate(sessions: WorkSession[]) {
 }
 
 export function SessionList({ sessions, onEditSession }: SessionListProps) {
+  const [currentUser, setCurrentUser] = useState<User | null>(null)
   const groupedSessions = useMemo(() => groupSessionsByDate(sessions), [sessions])
   const totalDuration = useMemo(() => 
     sessions.reduce((acc, session) => acc + session.duration, 0), 
     [sessions]
   )
   
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user }}) => {
+      setCurrentUser(user)
+    })
+  }, [])
+
   const inspirationalMessage = useMemo(() => {
     const totalHours = totalDuration / 3600
     if (totalHours >= 40) return "Amazing work! You've put in a full work week! 🎉"
@@ -99,27 +109,39 @@ export function SessionList({ sessions, onEditSession }: SessionListProps) {
                 {date}
               </h3>
               <div className="space-y-1">
-                {dateSessions.map((session) => (
-                  <div
-                    key={session.id}
-                    onClick={() => session.ended_at && onEditSession(session)}
-                    className={`flex items-center justify-between p-2 rounded-lg transition-colors ${
-                      session.ended_at 
-                        ? 'hover:bg-secondary cursor-pointer' 
-                        : 'bg-primary/5'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className={`w-2 h-2 rounded-full ${
-                        session.ended_at ? 'bg-green-500' : 'bg-blue-500 animate-pulse'
-                      }`} />
-                      <span className="font-medium">{session.name}</span>
+                {dateSessions.map((session) => {
+                  const isOwnSession = currentUser?.id === session.created_by
+                  return (
+                    <div 
+                      key={session.id} 
+                      className={`flex items-center justify-between p-3 rounded-md hover:bg-accent/50 cursor-pointer ${
+                        !isOwnSession ? 'bg-secondary/20' : ''
+                      }`}
+                      onClick={() => isOwnSession && onEditSession(session)}
+                    >
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">
+                          {session.name}
+                          {!isOwnSession && (
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              (by another user)
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(session.created_at).toLocaleTimeString()} - {
+                            session.ended_at 
+                              ? new Date(session.ended_at).toLocaleTimeString()
+                              : 'In Progress'
+                          }
+                        </p>
+                      </div>
+                      <div className="text-sm font-medium">
+                        {formatDuration(session.duration * 1000)}
+                      </div>
                     </div>
-                    <div className="text-sm text-muted-foreground">
-                      {formatDuration(session.duration * 1000)}
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           ))}

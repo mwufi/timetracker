@@ -18,6 +18,8 @@ import { ActiveSession } from "@/components/active-session"
 import { formatDuration, formatExactDuration, toLocalISOString, fromLocalISOString } from "@/lib/utils"
 import { createBackend } from '@/lib/backend'
 import type { Project, WorkSession } from '@/lib/types'
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>([])
@@ -30,6 +32,7 @@ export default function Home() {
   const [customStartTime, setCustomStartTime] = useState<string>('')
   const [customEndTime, setCustomEndTime] = useState<string>('')
   const [activeSession, setActiveSession] = useState<WorkSession | null>(null)
+  const [showUniverseMode, setShowUniverseMode] = useState(false)
 
   // For editing sessions
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
@@ -43,25 +46,37 @@ export default function Home() {
 
   useEffect(() => {
     const loadProjects = async () => {
-      const projects = await backend.getProjects()
+      const projects = await backend.getProjects(showUniverseMode)
       setProjects(projects)
     }
     loadProjects()
-  }, [])
 
-  // Load and subscribe to active session
+    // Also refresh active session and project sessions when universe mode changes
+    const loadActiveSession = async () => {
+      const session = await backend.getActiveSession(showUniverseMode)
+      setActiveSession(session)
+    }
+    loadActiveSession()
+
+    if (expandedProjectId) {
+      const loadSessions = async () => {
+        const sessions = await backend.getSessions(expandedProjectId, showUniverseMode)
+        setProjectSessions(prev => ({
+          ...prev,
+          [expandedProjectId]: sessions
+        }))
+      }
+      loadSessions()
+    }
+  }, [showUniverseMode, expandedProjectId])
+
   useEffect(() => {
     let unsubscribe: (() => void) | undefined
 
     const setup = async () => {
-      // Initial load
-      const session = await backend.getActiveSession()
-      setActiveSession(session)
-
-      // Subscribe to changes
       unsubscribe = await backend.subscribeToActiveSessions((session) => {
         setActiveSession(session)
-      })
+      }, showUniverseMode)
     }
 
     setup().catch(console.error)
@@ -71,20 +86,14 @@ export default function Home() {
         unsubscribe()
       }
     }
-  }, [])
+  }, [showUniverseMode])
 
   useEffect(() => {
-    if (!expandedProjectId) return
-
-    const loadSessions = async () => {
-      const sessions = await backend.getSessions(expandedProjectId)
-      setProjectSessions(prev => ({
-        ...prev,
-        [expandedProjectId]: sessions
-      }))
+    const savedExpandedId = localStorage.getItem('expandedProjectId')
+    if (savedExpandedId) {
+      setExpandedProjectId(parseInt(savedExpandedId))
     }
-    loadSessions()
-  }, [expandedProjectId])
+  }, [])
 
   const startSession = async () => {
     if (!selectedProjectId || !sessionName.trim()) return
@@ -116,10 +125,10 @@ export default function Home() {
         created_at: startTime,
         ended_at: endTime,
         created_by: user.id
-      })
+      }, showUniverseMode)
 
       if (!endTime) {
-        await backend.setActiveSession(session.id)
+        await backend.setActiveSession(session.id, showUniverseMode)
         setActiveSession(session)
       }
 
@@ -130,7 +139,7 @@ export default function Home() {
 
       // Refresh sessions if the project is expanded
       if (expandedProjectId === selectedProjectId) {
-        const sessions = await backend.getSessions(selectedProjectId)
+        const sessions = await backend.getSessions(selectedProjectId, showUniverseMode)
         setProjectSessions(prev => ({
           ...prev,
           [selectedProjectId]: sessions
@@ -154,14 +163,14 @@ export default function Home() {
     await backend.updateSession(activeSession.id, {
       ended_at: endTime,
       duration: duration
-    })
-    await backend.setActiveSession(null)
+    }, showUniverseMode)
+    await backend.setActiveSession(null, showUniverseMode)
     
     setActiveSession(null)
 
     // Refresh sessions if the project is expanded
     if (expandedProjectId === activeSession.project_id) {
-      const sessions = await backend.getSessions(activeSession.project_id)
+      const sessions = await backend.getSessions(activeSession.project_id, showUniverseMode)
       setProjectSessions(prev => ({
         ...prev,
         [activeSession.project_id]: sessions
@@ -183,13 +192,13 @@ export default function Home() {
       created_at: startTime,
       ended_at: endTime,
       duration: duration
-    })
+    }, showUniverseMode)
 
     setIsEditDialogOpen(false)
     
     // Refresh sessions if the project is expanded
     if (expandedProjectId === editingSession.project_id) {
-      const sessions = await backend.getSessions(editingSession.project_id)
+      const sessions = await backend.getSessions(editingSession.project_id, showUniverseMode)
       setProjectSessions(prev => ({
         ...prev,
         [editingSession.project_id]: sessions
@@ -223,13 +232,6 @@ export default function Home() {
     setIsEditDialogOpen(true)
   }
 
-  useEffect(() => {
-    const savedExpandedId = localStorage.getItem('expandedProjectId')
-    if (savedExpandedId) {
-      setExpandedProjectId(parseInt(savedExpandedId))
-    }
-  }, [])
-
   const toggleProject = (projectId: number) => {
     const newExpandedId = expandedProjectId === projectId ? null : projectId
     setExpandedProjectId(newExpandedId)
@@ -241,7 +243,7 @@ export default function Home() {
   }
 
   return (
-    <div className="container mx-auto p-4">
+    <div className="container mx-auto py-6 space-y-8">
       <NavBar />
       
       {/* Active Session Display */}
@@ -250,7 +252,7 @@ export default function Home() {
           session={activeSession}
           onEnd={endSession}
           onUpdate={async (updates) => {
-            const updatedSession = await backend.updateSession(activeSession.id, updates)
+            const updatedSession = await backend.updateSession(activeSession.id, updates, showUniverseMode)
             setActiveSession(updatedSession)
           }}
           variant="full"
@@ -259,6 +261,17 @@ export default function Home() {
 
       {/* Projects List */}
       <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h1 className="text-4xl font-bold">Projects</h1>
+          <div className="flex items-center space-x-2">
+            <Switch
+              id="universe-mode"
+              checked={showUniverseMode}
+              onCheckedChange={setShowUniverseMode}
+            />
+            <Label htmlFor="universe-mode">Universe Mode</Label>
+          </div>
+        </div>
         {projects.map((project) => (
           <div key={project.id} className="border rounded-lg overflow-hidden transition-all duration-200 hover:border-primary/20">
             <div 

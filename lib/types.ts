@@ -3,6 +3,7 @@ export interface Project {
   name: string
   description: string
   header_img: string
+  created_by: string
 }
 
 export interface WorkSession {
@@ -13,4 +14,5 @@ export interface WorkSession {
   duration: number
   created_at: string
   ended_at: string | null
+  created_by: string
 }
