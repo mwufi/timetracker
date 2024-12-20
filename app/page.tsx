@@ -9,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { NavBar } from "@/components/nav-bar"
+import { NavBar } from '@/components/nav-bar'
 import { Slider } from "@/components/ui/slider"
 import { Input } from "@/components/ui/input"
 import { SessionList } from "@/components/session-list"
@@ -20,6 +20,9 @@ import { createBackend } from '@/lib/backend'
 import type { Project, WorkSession, User } from '@/lib/types'
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
+import { cn } from '@/lib/utils'
+import { Globe } from 'lucide-react'
+import { useToast } from "@/hooks/use-toast"
 
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>([])
@@ -44,6 +47,7 @@ export default function Home() {
 
   const supabase = createClient()
   const backend = createBackend()
+  const { toast } = useToast()
 
   useEffect(() => {
     const loadUser = async () => {
@@ -233,224 +237,241 @@ export default function Home() {
     }
   }
 
+  const handleNewSession = (projectId: number) => {
+    if (activeSessions.some(s => s.created_by === currentUser?.id)) {
+      toast({
+        variant: "destructive",
+        title: "Cannot start new session",
+        description: "You already have an active session!"
+      })
+      return
+    }
+    initiateSession(projectId)
+  }
+
   return (
     <div className="container mx-auto py-6 space-y-8">
       <NavBar />
       
       {/* Active Sessions Display */}
       <div className="space-y-8">
-        {/* Your Active Session */}
-        {activeSessions.filter(s => s.created_by === currentUser?.id).length > 0 && (
-          <div className="space-y-4">
+        {/* Active Sessions */}
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">Your Active Session</h2>
-            {activeSessions
-              .filter(s => s.created_by === currentUser?.id)
-              .map(session => (
-                <ActiveSession
-                  key={session.id}
-                  session={session}
-                  onEnd={() => endSession(session)}
-                  onUpdate={async (updates) => {
-                    const updatedSession = await backend.updateSession(session.id, updates, showUniverseMode)
-                    setActiveSessions(prev => prev.map(s => 
-                      s.id === updatedSession.id ? updatedSession : s
-                    ))
-                  }}
-                  variant="full"
-                />
-              ))}
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="universe-mode"
+                checked={showUniverseMode}
+                onCheckedChange={setShowUniverseMode}
+              />
+              <Label htmlFor="universe-mode" className="flex items-center space-x-2">
+                <Globe className="h-4 w-4" />
+                <span>Universe Mode</span>
+              </Label>
+            </div>
           </div>
-        )}
 
-        {/* Other Active Sessions (Universe Mode) */}
-        {showUniverseMode && activeSessions.filter(s => s.created_by !== currentUser?.id).length > 0 && (
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Active Sessions Around the Universe</h2>
-            {activeSessions
-              .filter(s => s.created_by !== currentUser?.id)
-              .map(session => (
-                <ActiveSession
-                  key={session.id}
-                  session={session}
-                  variant="full"
-                />
-              ))}
-          </div>
-        )}
-      </div>
+          {activeSessions.filter(s => s.created_by === currentUser?.id).length > 0 && (
+            <div className="space-y-4">
+              {activeSessions
+                .filter(s => s.created_by === currentUser?.id)
+                .map(session => (
+                  <ActiveSession
+                    key={session.id}
+                    session={session}
+                    onEnd={() => endSession(session)}
+                    onUpdate={async (updates) => {
+                      const updatedSession = await backend.updateSession(session.id, updates, showUniverseMode)
+                      setActiveSessions(prev => prev.map(s => 
+                        s.id === updatedSession.id ? updatedSession : s
+                      ))
+                    }}
+                    variant="full"
+                  />
+                ))}
+            </div>
+          )}
 
-      {/* Projects List */}
-      <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <h1 className="text-4xl font-bold">Projects</h1>
-          <div className="flex items-center space-x-2">
-            <Switch
-              id="universe-mode"
-              checked={showUniverseMode}
-              onCheckedChange={setShowUniverseMode}
-            />
-            <Label htmlFor="universe-mode">Universe Mode</Label>
-          </div>
+          {/* Other Active Sessions (Universe Mode) */}
+          {showUniverseMode && activeSessions.filter(s => s.created_by !== currentUser?.id).length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-xl font-semibold">Active Sessions Around the Universe</h2>
+              {activeSessions
+                .filter(s => s.created_by !== currentUser?.id)
+                .map(session => (
+                  <ActiveSession
+                    key={session.id}
+                    session={session}
+                    variant="universe"
+                  />
+                ))}
+            </div>
+          )}
         </div>
 
-        {projects.map((project) => {
-          const isExpanded = expandedProjectId === project.id
-          const sessions = projectSessions[project.id] || []
-          const isOwnProject = currentUser?.id === project.created_by
-
-          return (
-            <div 
-              key={project.id} 
-              className={`border rounded-lg overflow-hidden transition-all duration-200 ${
-                isExpanded ? 'border-primary' : 'hover:border-primary/20'
-              } ${
-                !isOwnProject ? 'bg-secondary/5' : ''
-              }`}
-            >
+        {/* Projects List */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold">Projects</h2>
+          </div>
+          {projects.map(project => (
+            <div key={project.id} className="space-y-3">
               <div 
-                className={`p-4 cursor-pointer ${
-                  isExpanded ? 'bg-primary/5' : 'hover:bg-accent'
-                }`} 
+                className={cn(
+                  "p-4 rounded-lg bg-card hover:bg-card/80 transition-colors cursor-pointer relative overflow-hidden",
+                  project.created_by === currentUser?.id && "pl-6"
+                )}
                 onClick={() => toggleProject(project.id)}
               >
-                <div className="flex justify-between items-center">
+                {project.created_by === currentUser?.id && (
+                  <div className="absolute left-0 top-0 bottom-0 w-2 bg-primary" />
+                )}
+                <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-lg font-semibold">
-                      {project.name}
-                      {!isOwnProject && (
-                        <span className="ml-2 text-sm text-muted-foreground">
-                          (by another user)
-                        </span>
-                      )}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">{project.description}</p>
+                    <h3 className="font-medium">{project.name}</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {project.description || 'No description'}
+                    </p>
                   </div>
-                  {isOwnProject && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        initiateSession(project.id)
-                      }}
-                      className="px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
-                    >
-                      New Session
-                    </button>
-                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleNewSession(project.id)
+                    }}
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+                  >
+                    New Session
+                  </button>
                 </div>
               </div>
-
-              {isExpanded && sessions.length > 0 && (
-                <div className="p-4 border-t">
-                  <SessionList 
-                    sessions={sessions}
-                    onEditSession={openEditDialog}
-                  />
+              {expandedProjectId === project.id && (
+                <div className="pl-6">
+                  <h4 className="text-sm font-medium mb-2">Recent Sessions</h4>
+                  <div className="space-y-2">
+                    {projectSessions[project.id]?.map(session => (
+                      <div 
+                        key={session.id}
+                        className="p-3 rounded-md bg-muted/50 flex items-center justify-between"
+                      >
+                        <div>
+                          <p className="font-medium">{session.name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {new Date(session.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <p className="text-lg font-mono">
+                          {formatExactDuration(session.duration)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
-          )
-        })}
-      </div>
+          ))}
+        </div>
 
-      {/* Start Session Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Start New Session</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <Input
-              placeholder="Session name"
-              value={sessionName}
-              onChange={(e) => setSessionName(e.target.value)}
-            />
-            <div className="grid gap-2">
-              <label>Custom Start Time (optional)</label>
+        {/* Start Session Dialog */}
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Start New Session</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
               <Input
-                type="datetime-local"
-                value={customStartTime}
-                onChange={(e) => setCustomStartTime(e.target.value)}
+                placeholder="Session name"
+                value={sessionName}
+                onChange={(e) => setSessionName(e.target.value)}
               />
-            </div>
-            <div className="grid gap-2">
-              <label>Custom End Time (optional)</label>
-              <Input
-                type="datetime-local"
-                value={customEndTime}
-                onChange={(e) => setCustomEndTime(e.target.value)}
-              />
-            </div>
-            <button
-              onClick={startSession}
-              className="bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 rounded-md"
-            >
-              Start Session
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Session Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Session</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <Input
-              placeholder="Session name"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-            />
-            <div className="grid gap-2">
-              <label>Start Time</label>
-              <Input
-                type="datetime-local"
-                value={editStartTime}
-                onChange={(e) => setEditStartTime(e.target.value)}
-              />
-            </div>
-            <div className="grid gap-2">
-              <label>End Time</label>
-              <Input
-                type="datetime-local"
-                value={editEndTime}
-                onChange={(e) => setEditEndTime(e.target.value)}
-              />
-            </div>
-            {editingSession && (
-              <div className="space-y-2">
-                <label>Duration</label>
-                <Slider
-                  defaultValue={[editingSession.duration]}
-                  max={24 * 60 * 60} // 24 hours in seconds
-                  step={60} // 1 minute
-                  onValueChange={([value]) => {
-                    // Update end time based on slider
-                    const startTime = new Date(editStartTime)
-                    const newEndTime = new Date(startTime.getTime() + value * 1000)
-                    setEditEndTime(newEndTime.toISOString().slice(0, 16))
-                  }}
+              <div className="grid gap-2">
+                <label>Custom Start Time (optional)</label>
+                <Input
+                  type="datetime-local"
+                  value={customStartTime}
+                  onChange={(e) => setCustomStartTime(e.target.value)}
                 />
-                <div className="text-sm text-muted-foreground">
-                  Duration: {formatDuration(editingSession.duration * 1000)}
-                </div>
               </div>
-            )}
-            <button
-              onClick={updateSession}
-              className="bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 rounded-md"
-            >
-              Update Session
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
+              <div className="grid gap-2">
+                <label>Custom End Time (optional)</label>
+                <Input
+                  type="datetime-local"
+                  value={customEndTime}
+                  onChange={(e) => setCustomEndTime(e.target.value)}
+                />
+              </div>
+              <button
+                onClick={startSession}
+                className="bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 rounded-md"
+              >
+                Start Session
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
-      <SignInDialog 
-        open={isSignInDialogOpen} 
-        onOpenChange={setIsSignInDialogOpen} 
-      />
+        {/* Edit Session Dialog */}
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Session</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <Input
+                placeholder="Session name"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+              />
+              <div className="grid gap-2">
+                <label>Start Time</label>
+                <Input
+                  type="datetime-local"
+                  value={editStartTime}
+                  onChange={(e) => setEditStartTime(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <label>End Time</label>
+                <Input
+                  type="datetime-local"
+                  value={editEndTime}
+                  onChange={(e) => setEditEndTime(e.target.value)}
+                />
+              </div>
+              {editingSession && (
+                <div className="space-y-2">
+                  <label>Duration</label>
+                  <Slider
+                    defaultValue={[editingSession.duration]}
+                    max={24 * 60 * 60} // 24 hours in seconds
+                    step={60} // 1 minute
+                    onValueChange={([value]) => {
+                      // Update end time based on slider
+                      const startTime = new Date(editStartTime)
+                      const newEndTime = new Date(startTime.getTime() + value * 1000)
+                      setEditEndTime(newEndTime.toISOString().slice(0, 16))
+                    }}
+                  />
+                  <div className="text-sm text-muted-foreground">
+                    Duration: {formatDuration(editingSession.duration * 1000)}
+                  </div>
+                </div>
+              )}
+              <button
+                onClick={updateSession}
+                className="bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 rounded-md"
+              >
+                Update Session
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <SignInDialog 
+          open={isSignInDialogOpen} 
+          onOpenChange={setIsSignInDialogOpen} 
+        />
+      </div>
     </div>
   )
 }
