@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label"
 import { cn } from '@/lib/utils'
 import { Globe } from 'lucide-react'
 import { useToast } from "@/hooks/use-toast"
+import { BottomNav } from '@/components/bottom-nav'
 
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>([])
@@ -250,14 +251,13 @@ export default function Home() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-8">
-      <NavBar />
-      
-      {/* Active Sessions Display */}
-      <div className="space-y-8">
+    <div className="min-h-screen pb-20 md:pb-6">
+      <div className="container max-w-5xl mx-auto px-4 py-6 space-y-8">
+        <NavBar />
+        
         {/* Active Sessions */}
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-4">
             <h2 className="text-xl font-semibold">Your Active Session</h2>
             <div className="flex items-center space-x-2">
               <Switch
@@ -267,7 +267,7 @@ export default function Home() {
               />
               <Label htmlFor="universe-mode" className="flex items-center space-x-2">
                 <Globe className="h-4 w-4" />
-                <span>Universe Mode</span>
+                <span className="hidden sm:inline">Universe Mode</span>
               </Label>
             </div>
           </div>
@@ -311,65 +311,67 @@ export default function Home() {
         </div>
 
         {/* Projects List */}
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">Projects</h2>
           </div>
-          {projects.map(project => (
-            <div key={project.id} className="space-y-3">
-              <div 
-                className={cn(
-                  "p-4 rounded-lg bg-card hover:bg-card/80 transition-colors cursor-pointer relative overflow-hidden",
-                  project.created_by === currentUser?.id && "pl-6"
-                )}
-                onClick={() => toggleProject(project.id)}
-              >
-                {project.created_by === currentUser?.id && (
-                  <div className="absolute left-0 top-0 bottom-0 w-2 bg-primary" />
-                )}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-medium">{project.name}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {project.description || 'No description'}
-                    </p>
+          <div className="grid gap-4 sm:gap-6">
+            {projects.map(project => (
+              <div key={project.id} className="space-y-4">
+                <div 
+                  className={cn(
+                    "p-4 rounded-lg bg-card hover:bg-card/80 transition-colors cursor-pointer relative overflow-hidden",
+                    project.created_by === currentUser?.id && "pl-6"
+                  )}
+                  onClick={() => toggleProject(project.id)}
+                >
+                  {project.created_by === currentUser?.id && (
+                    <div className="absolute left-0 top-0 bottom-0 w-2 bg-primary" />
+                  )}
+                  <div className="flex items-center justify-between flex-wrap gap-4">
+                    <div>
+                      <h3 className="font-medium">{project.name}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {project.description || 'No description'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleNewSession(project.id)
+                      }}
+                      className="shrink-0 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+                    >
+                      New Session
+                    </button>
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleNewSession(project.id)
-                    }}
-                    className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-                  >
-                    New Session
-                  </button>
                 </div>
-              </div>
-              {expandedProjectId === project.id && (
-                <div className="pl-6">
-                  <h4 className="text-sm font-medium mb-2">Recent Sessions</h4>
-                  <div className="space-y-2">
-                    {projectSessions[project.id]?.map(session => (
-                      <div 
-                        key={session.id}
-                        className="p-3 rounded-md bg-muted/50 flex items-center justify-between"
-                      >
-                        <div>
-                          <p className="font-medium">{session.name}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {new Date(session.created_at).toLocaleDateString()}
+                {expandedProjectId === project.id && (
+                  <div className="pl-6 space-y-3">
+                    <h4 className="text-sm font-medium">Recent Sessions</h4>
+                    <div className="grid gap-2">
+                      {projectSessions[project.id]?.map(session => (
+                        <div 
+                          key={session.id}
+                          className="p-3 rounded-md bg-muted/50 flex items-center justify-between flex-wrap gap-2"
+                        >
+                          <div>
+                            <p className="font-medium">{session.name}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {new Date(session.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <p className="text-lg font-mono">
+                            {formatExactDuration(session.duration)}
                           </p>
                         </div>
-                        <p className="text-lg font-mono">
-                          {formatExactDuration(session.duration)}
-                        </p>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          ))}
+                )}
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Start Session Dialog */}
@@ -472,6 +474,7 @@ export default function Home() {
           onOpenChange={setIsSignInDialogOpen} 
         />
       </div>
+      <BottomNav />
     </div>
   )
 }
