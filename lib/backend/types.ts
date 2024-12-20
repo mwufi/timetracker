@@ -13,6 +13,7 @@ export interface WorkSession {
   duration: number
   created_at: string
   ended_at: string | null
+  created_by: string
 }
 
 export interface Backend {
@@ -31,5 +32,5 @@ export interface Backend {
   // Active session operations
   getActiveSession(): Promise<WorkSession | null>
   setActiveSession(sessionId: number | null): Promise<void>
-  subscribeToActiveSessions(callback: (session: WorkSession | null) => void): () => void
+  subscribeToActiveSessions(callback: (session: WorkSession | null) => void): Promise<() => void>
 }

@@ -51,20 +51,25 @@ export default function Home() {
 
   // Load and subscribe to active session
   useEffect(() => {
-    // Initial load
-    const loadActiveSession = async () => {
+    let unsubscribe: (() => void) | undefined
+
+    const setup = async () => {
+      // Initial load
       const session = await backend.getActiveSession()
       setActiveSession(session)
-    }
-    loadActiveSession()
 
-    // Subscribe to changes
-    const unsubscribe = backend.subscribeToActiveSessions((session) => {
-      setActiveSession(session)
-    })
+      // Subscribe to changes
+      unsubscribe = await backend.subscribeToActiveSessions((session) => {
+        setActiveSession(session)
+      })
+    }
+
+    setup().catch(console.error)
 
     return () => {
-      unsubscribe()
+      if (unsubscribe) {
+        unsubscribe()
+      }
     }
   }, [])
 
@@ -84,44 +89,59 @@ export default function Home() {
   const startSession = async () => {
     if (!selectedProjectId || !sessionName.trim()) return
 
-    const startTime = customStartTime 
-      ? fromLocalISOString(customStartTime)
-      : new Date().toISOString()
-    
-    const endTime = customEndTime 
-      ? fromLocalISOString(customEndTime)
-      : null
-
-    const duration = endTime 
-      ? Math.floor((new Date(endTime).getTime() - new Date(startTime).getTime()) / 1000)
-      : 0
-
-    const session = await backend.createSession({
-      project_id: selectedProjectId,
-      name: sessionName.trim(),
-      category: 'work',
-      duration: duration,
-      created_at: startTime,
-      ended_at: endTime,
-    })
-
-    if (!endTime) {
-      await backend.setActiveSession(session.id)
-      setActiveSession(session)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      setIsSignInDialogOpen(true)
+      return
     }
 
-    setIsDialogOpen(false)
-    setSessionName('')
-    setCustomStartTime('')
-    setCustomEndTime('')
+    try {
+      const startTime = customStartTime 
+        ? fromLocalISOString(customStartTime)
+        : new Date().toISOString()
+      
+      const endTime = customEndTime 
+        ? fromLocalISOString(customEndTime)
+        : null
 
-    // Refresh sessions if the project is expanded
-    if (expandedProjectId === selectedProjectId) {
-      const sessions = await backend.getSessions(selectedProjectId)
-      setProjectSessions(prev => ({
-        ...prev,
-        [selectedProjectId]: sessions
-      }))
+      const duration = endTime 
+        ? Math.floor((new Date(endTime).getTime() - new Date(startTime).getTime()) / 1000)
+        : 0
+
+      const session = await backend.createSession({
+        project_id: selectedProjectId,
+        name: sessionName.trim(),
+        category: 'work',
+        duration: duration,
+        created_at: startTime,
+        ended_at: endTime,
+        created_by: user.id
+      })
+
+      if (!endTime) {
+        await backend.setActiveSession(session.id)
+        setActiveSession(session)
+      }
+
+      setIsDialogOpen(false)
+      setSessionName('')
+      setCustomStartTime('')
+      setCustomEndTime('')
+
+      // Refresh sessions if the project is expanded
+      if (expandedProjectId === selectedProjectId) {
+        const sessions = await backend.getSessions(selectedProjectId)
+        setProjectSessions(prev => ({
+          ...prev,
+          [selectedProjectId]: sessions
+        }))
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Must be logged in to create a session') {
+        setIsSignInDialogOpen(true)
+      } else {
+        console.error('Error creating session:', error)
+      }
     }
   }
 
