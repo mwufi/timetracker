@@ -256,6 +256,34 @@ export default function Home() {
     }
   }
 
+  const handleEditSession = async (session: WorkSession) => {
+    try {
+      const { error } = await supabase
+        .from('work_sessions')
+        .update({
+          name: session.name,
+          created_at: session.created_at,
+          ended_at: session.ended_at,
+          duration: session.duration
+        })
+        .eq('id', session.id)
+
+      if (error) throw error
+
+      toast({
+        title: "Session updated",
+        description: `Updated session "${session.name}"`
+      })
+    } catch (error) {
+      console.error('Error updating session:', error)
+      toast({
+        variant: "destructive",
+        title: "Error updating session",
+        description: "Please try again"
+      })
+    }
+  }
+
   const updateSession = async () => {
     if (!editingSession) return
 
@@ -360,6 +388,7 @@ export default function Home() {
           expandedProjectId={expandedProjectId}
           onToggleProject={toggleProject}
           onNewSession={handleNewSession}
+          onEditSession={handleEditSession}
         />
 
         {/* Dialogs */}

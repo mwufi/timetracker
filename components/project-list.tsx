@@ -1,8 +1,8 @@
 'use client'
 
-import Image from "next/image"
 import type { Project, WorkSession, User } from "@/lib/types"
 import { ProjectCard } from "./project-card"
+import { ProjectPreviewCard } from "./project-preview-card"
 
 interface ProjectListProps {
   projects: (Project & { sessions: WorkSession[] })[]
@@ -10,6 +10,8 @@ interface ProjectListProps {
   expandedProjectId: number | null
   onToggleProject: (id: number) => void
   onNewSession: (id: number) => void
+  onEditSession?: (session: WorkSession) => void
+  onDeleteSession?: (session: WorkSession) => void
 }
 
 export function ProjectList({
@@ -18,22 +20,30 @@ export function ProjectList({
   expandedProjectId,
   onToggleProject,
   onNewSession,
+  onEditSession,
+  onDeleteSession,
 }: ProjectListProps) {
   if (!projects.length) {
     return (
       <div className="text-center py-12">
-        <div className="relative w-64 h-64 mx-auto mb-6 rounded-lg overflow-hidden">
-          <Image
-            src="/analog_interior.webp"
-            alt="No projects yet"
-            fill
-            className="object-cover"
-          />
+        <p className="text-lg text-muted-foreground">No projects yet</p>
+      </div>
+    )
+  }
+
+  if (!currentUser) {
+    return (
+      <div className="space-y-6">
+        <h2 className="text-xl font-semibold">Featured Projects</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {projects.map(project => (
+            <ProjectPreviewCard
+              key={project.id}
+              project={project}
+              onJoinProject={() => onNewSession(project.id)}
+            />
+          ))}
         </div>
-        <h3 className="text-lg font-medium mb-2">No projects yet</h3>
-        <p className="text-muted-foreground">
-          Create your first project to start tracking your work sessions
-        </p>
       </div>
     )
   }
@@ -52,6 +62,8 @@ export function ProjectList({
             isExpanded={expandedProjectId === project.id}
             onToggle={() => onToggleProject(project.id)}
             onNewSession={() => onNewSession(project.id)}
+            onEditSession={onEditSession}
+            onDeleteSession={onDeleteSession}
           />
         ))}
       </div>

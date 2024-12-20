@@ -8,8 +8,14 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-
-
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'ynxmunrlesicnfibjctb.supabase.co',
+      },
+    ],
+  },
 };
 
 export default nextConfig;
