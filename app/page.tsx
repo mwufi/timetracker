@@ -1,128 +1,201 @@
-"use client";
+'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@/utils/supabase/client'
-import Image from 'next/image'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { NavBar } from '@/components/nav-bar'
-import { Slider } from "@/components/ui/slider"
-import { Input } from "@/components/ui/input"
-import { SessionList } from "@/components/session-list"
-import { SignInDialog } from "@/components/sign-in-dialog"
-import { ActiveSession } from "@/components/active-session"
-import { formatDuration, formatExactDuration, toLocalISOString, fromLocalISOString } from "@/lib/utils"
-import { createBackend } from '@/lib/backend'
+import { ActiveSession } from '@/components/active-session'
+import { NewSessionDialog } from '@/components/new-session-dialog'
+import { EditSessionDialog } from '@/components/edit-session-dialog'
+import { SignInDialog } from '@/components/sign-in-dialog'
+import { ProjectList } from '@/components/project-list'
+import { formatExactDuration } from '@/lib/utils'
+import { Globe } from 'lucide-react'
 import type { Project, WorkSession, User } from '@/lib/types'
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { cn } from '@/lib/utils'
-import { Globe } from 'lucide-react'
 import { useToast } from "@/hooks/use-toast"
 import { BottomNav } from '@/components/bottom-nav'
+import { createClient } from '@/utils/supabase/client'
+import { createBackend } from '@/lib/backend'
 
 export default function Home() {
-  const [projects, setProjects] = useState<Project[]>([])
-  const [projectSessions, setProjectSessions] = useState<Record<number, WorkSession[]>>({})
+  // State for projects with their sessions included
+  const [projects, setProjects] = useState<(Project & { sessions: WorkSession[] })[]>([])
   const [expandedProjectId, setExpandedProjectId] = useState<number | null>(null)
   const [activeSessions, setActiveSessions] = useState<WorkSession[]>([])
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const [showUniverseMode, setShowUniverseMode] = useState(false)
   const [isSignInDialogOpen, setIsSignInDialogOpen] = useState(false)
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [sessionName, setSessionName] = useState('')
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
   const [customStartTime, setCustomStartTime] = useState<string>('')
   const [customEndTime, setCustomEndTime] = useState<string>('')
-  const [showUniverseMode, setShowUniverseMode] = useState(false)
-  const [currentUser, setCurrentUser] = useState<User | null>(null)
-
-  // For editing sessions
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingSession, setEditingSession] = useState<WorkSession | null>(null)
   const [editName, setEditName] = useState('')
   const [editStartTime, setEditStartTime] = useState('')
   const [editEndTime, setEditEndTime] = useState('')
+  const { toast } = useToast()
 
   const supabase = createClient()
   const backend = createBackend()
-  const { toast } = useToast()
 
+  // Load initial data
   useEffect(() => {
-    const loadUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      setCurrentUser(user)
+    const loadInitialData = async () => {
+      try {
+        // Get current user
+        const { data: { user } } = await supabase.auth.getUser()
+        setCurrentUser(user)
+
+        // Get all projects with their recent sessions in a single query
+        const { data: projectsData, error: projectsError } = await supabase
+          .from('projects')
+          .select(`
+            *,
+            sessions:work_sessions(
+              *,
+              created_by,
+              project_id
+            )
+          `)
+          .order('created_at', { ascending: false })
+
+        if (projectsError) throw projectsError
+
+        // Sort sessions by date and limit to most recent
+        const projectsWithSessions = projectsData.map(project => ({
+          ...project,
+          sessions: (project.sessions as WorkSession[])
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            .slice(0, 5)
+        }))
+
+        setProjects(projectsWithSessions)
+
+        // Get active sessions
+        const { data: activeSessions, error: activeError } = await supabase
+          .from('work_sessions')
+          .select('*')
+          .is('ended_at', null)
+          .order('created_at', { ascending: false })
+
+        if (activeError) throw activeError
+        setActiveSessions(activeSessions)
+      } catch (error) {
+        console.error('Error loading initial data:', error)
+        toast({
+          variant: "destructive",
+          title: "Error loading data",
+          description: "Please try refreshing the page"
+        })
+      }
     }
-    loadUser()
+
+    loadInitialData()
   }, [])
 
+  // Subscribe to session updates
   useEffect(() => {
-    const loadProjects = async () => {
-      const projects = await backend.getProjects(showUniverseMode)
-      setProjects(projects)
-    }
-    loadProjects()
+    const channel = supabase
+      .channel('work_sessions')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'work_sessions'
+      }, payload => {
+        const session = payload.new as WorkSession
 
-    // Also refresh active session and project sessions when universe mode changes
-    const loadActiveSessions = async () => {
-      const sessions = await backend.getActiveSession(showUniverseMode)
-      setActiveSessions(sessions)
-    }
-    loadActiveSessions()
-
-    if (expandedProjectId) {
-      const loadSessions = async () => {
-        const sessions = await backend.getSessions(expandedProjectId, showUniverseMode)
-        setProjectSessions(prev => ({
-          ...prev,
-          [expandedProjectId]: sessions
-        }))
-      }
-      loadSessions()
-    }
-  }, [showUniverseMode, expandedProjectId])
-
-  useEffect(() => {
-    let unsubscribe: (() => void) | undefined
-
-    const setup = async () => {
-      unsubscribe = await backend.subscribeToActiveSessions((sessions) => {
-        setActiveSessions(sessions)
-      }, showUniverseMode)
-    }
-
-    setup().catch(console.error)
+        if (payload.eventType === 'INSERT') {
+          // Only add if not already in activeSessions
+          setActiveSessions(prev => {
+            if (prev.some(s => s.id === session.id)) return prev
+            return [session, ...prev]
+          })
+          // Update project sessions
+          setProjects(prev => prev.map(project => 
+            project.id === session.project_id
+              ? {
+                  ...project,
+                  sessions: [session, ...project.sessions.filter(s => s.id !== session.id).slice(0, 4)]
+                }
+              : project
+          ))
+        } else if (payload.eventType === 'UPDATE') {
+          setActiveSessions(prev => {
+            // If session is ended, remove it from active sessions
+            if (session.ended_at) {
+              return prev.filter(s => s.id !== session.id)
+            }
+            // Otherwise update it
+            return prev.map(s => s.id === session.id ? session : s)
+          })
+          // Update project sessions
+          setProjects(prev => prev.map(project => 
+            project.id === session.project_id
+              ? {
+                  ...project,
+                  sessions: project.sessions.map(s => s.id === session.id ? session : s)
+                }
+              : project
+          ))
+        } else if (payload.eventType === 'DELETE') {
+          setActiveSessions(prev => prev.filter(s => s.id !== session.id))
+          // Update project sessions
+          setProjects(prev => prev.map(project => 
+            project.id === session.project_id
+              ? {
+                  ...project,
+                  sessions: project.sessions.filter(s => s.id !== session.id)
+                }
+              : project
+          ))
+        }
+      })
+      .subscribe()
 
     return () => {
-      if (unsubscribe) {
-        unsubscribe()
-      }
+      supabase.removeChannel(channel)
     }
-  }, [showUniverseMode])
+  }, [supabase])
 
-  useEffect(() => {
-    const savedExpandedId = localStorage.getItem('expandedProjectId')
-    if (savedExpandedId) {
-      setExpandedProjectId(parseInt(savedExpandedId))
-    }
-  }, [])
+  const toggleProject = (id: number) => {
+    setExpandedProjectId(prev => prev === id ? null : id)
+  }
 
-  const startSession = async () => {
-    if (!selectedProjectId || !sessionName.trim()) return
-
+  const handleNewSession = (projectId: number) => {
     if (!currentUser) {
       setIsSignInDialogOpen(true)
       return
     }
 
+    if (activeSessions.some(s => s.created_by === currentUser?.id)) {
+      toast({
+        variant: "destructive",
+        title: "Cannot start new session",
+        description: "You already have an active session!"
+      })
+      return
+    }
+    initiateSession(projectId)
+  }
+
+  const initiateSession = async (projectId: number) => {
+    setSelectedProjectId(projectId)
+    setSessionName('')
+    setIsDialogOpen(true)
+  }
+
+  const startSession = async () => {
+    if (!selectedProjectId || !sessionName.trim()) return
+
     try {
       const startTime = customStartTime 
-        ? fromLocalISOString(customStartTime)
+        ? new Date(customStartTime).toISOString()
         : new Date().toISOString()
       const endTime = customEndTime
-        ? fromLocalISOString(customEndTime)
+        ? new Date(customEndTime).toISOString()
         : null
 
       const duration = endTime
@@ -150,10 +223,11 @@ export default function Home() {
       // Refresh sessions if the project is expanded
       if (expandedProjectId === selectedProjectId) {
         const sessions = await backend.getSessions(selectedProjectId, showUniverseMode)
-        setProjectSessions(prev => ({
-          ...prev,
-          [selectedProjectId]: sessions
-        }))
+        setProjects(prev => prev.map(project => 
+          project.id === selectedProjectId
+            ? { ...project, sessions: sessions }
+            : project
+        ))
       }
     } catch (error) {
       console.error('Error starting session:', error)
@@ -174,18 +248,19 @@ export default function Home() {
     // Refresh sessions if the project is expanded
     if (expandedProjectId === session.project_id) {
       const sessions = await backend.getSessions(session.project_id, showUniverseMode)
-      setProjectSessions(prev => ({
-        ...prev,
-        [session.project_id]: sessions
-      }))
+      setProjects(prev => prev.map(project => 
+        project.id === session.project_id
+          ? { ...project, sessions: sessions }
+          : project
+      ))
     }
   }
 
   const updateSession = async () => {
     if (!editingSession) return
 
-    const startTime = fromLocalISOString(editStartTime)
-    const endTime = editEndTime ? fromLocalISOString(editEndTime) : null
+    const startTime = new Date(editStartTime).toISOString()
+    const endTime = editEndTime ? new Date(editEndTime).toISOString() : null
     const duration = endTime 
       ? Math.floor((new Date(endTime).getTime() - new Date(startTime).getTime()) / 1000)
       : 0
@@ -202,52 +277,20 @@ export default function Home() {
     // Refresh sessions if the project is expanded
     if (expandedProjectId === editingSession.project_id) {
       const sessions = await backend.getSessions(editingSession.project_id, showUniverseMode)
-      setProjectSessions(prev => ({
-        ...prev,
-        [editingSession.project_id]: sessions
-      }))
+      setProjects(prev => prev.map(project => 
+        project.id === editingSession.project_id
+          ? { ...project, sessions: sessions }
+          : project
+      ))
     }
-  }
-
-  const initiateSession = async (projectId: number) => {
-    if (!currentUser) {
-      setIsSignInDialogOpen(true)
-      return
-    }
-
-    setSelectedProjectId(projectId)
-    setSessionName('')
-    setIsDialogOpen(true)
   }
 
   const openEditDialog = (session: WorkSession) => {
     setEditingSession(session)
     setEditName(session.name)
-    setEditStartTime(toLocalISOString(new Date(session.created_at)))
-    setEditEndTime(session.ended_at ? toLocalISOString(new Date(session.ended_at)) : '')
+    setEditStartTime(session.created_at)
+    setEditEndTime(session.ended_at || '')
     setIsEditDialogOpen(true)
-  }
-
-  const toggleProject = (projectId: number) => {
-    const newExpandedId = expandedProjectId === projectId ? null : projectId
-    setExpandedProjectId(newExpandedId)
-    if (newExpandedId) {
-      localStorage.setItem('expandedProjectId', newExpandedId.toString())
-    } else {
-      localStorage.removeItem('expandedProjectId')
-    }
-  }
-
-  const handleNewSession = (projectId: number) => {
-    if (activeSessions.some(s => s.created_by === currentUser?.id)) {
-      toast({
-        variant: "destructive",
-        title: "Cannot start new session",
-        description: "You already have an active session!"
-      })
-      return
-    }
-    initiateSession(projectId)
   }
 
   return (
@@ -311,164 +354,38 @@ export default function Home() {
         </div>
 
         {/* Projects List */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">Projects</h2>
-          </div>
-          <div className="grid gap-4 sm:gap-6">
-            {projects.map(project => (
-              <div key={project.id} className="space-y-4">
-                <div 
-                  className={cn(
-                    "p-4 rounded-lg bg-card hover:bg-card/80 transition-colors cursor-pointer relative overflow-hidden",
-                    project.created_by === currentUser?.id && "pl-6"
-                  )}
-                  onClick={() => toggleProject(project.id)}
-                >
-                  {project.created_by === currentUser?.id && (
-                    <div className="absolute left-0 top-0 bottom-0 w-2 bg-primary" />
-                  )}
-                  <div className="flex items-center justify-between flex-wrap gap-4">
-                    <div>
-                      <h3 className="font-medium">{project.name}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {project.description || 'No description'}
-                      </p>
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleNewSession(project.id)
-                      }}
-                      className="shrink-0 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-                    >
-                      New Session
-                    </button>
-                  </div>
-                </div>
-                {expandedProjectId === project.id && (
-                  <div className="pl-6 space-y-3">
-                    <h4 className="text-sm font-medium">Recent Sessions</h4>
-                    <div className="grid gap-2">
-                      {projectSessions[project.id]?.map(session => (
-                        <div 
-                          key={session.id}
-                          className="p-3 rounded-md bg-muted/50 flex items-center justify-between flex-wrap gap-2"
-                        >
-                          <div>
-                            <p className="font-medium">{session.name}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {new Date(session.created_at).toLocaleDateString()}
-                            </p>
-                          </div>
-                          <p className="text-lg font-mono">
-                            {formatExactDuration(session.duration)}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
+        <ProjectList
+          projects={projects}
+          currentUser={currentUser}
+          expandedProjectId={expandedProjectId}
+          onToggleProject={toggleProject}
+          onNewSession={handleNewSession}
+        />
 
-        {/* Start Session Dialog */}
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Start New Session</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <Input
-                placeholder="Session name"
-                value={sessionName}
-                onChange={(e) => setSessionName(e.target.value)}
-              />
-              <div className="grid gap-2">
-                <label>Custom Start Time (optional)</label>
-                <Input
-                  type="datetime-local"
-                  value={customStartTime}
-                  onChange={(e) => setCustomStartTime(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <label>Custom End Time (optional)</label>
-                <Input
-                  type="datetime-local"
-                  value={customEndTime}
-                  onChange={(e) => setCustomEndTime(e.target.value)}
-                />
-              </div>
-              <button
-                onClick={startSession}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 rounded-md"
-              >
-                Start Session
-              </button>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Edit Session Dialog */}
-        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Edit Session</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <Input
-                placeholder="Session name"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-              />
-              <div className="grid gap-2">
-                <label>Start Time</label>
-                <Input
-                  type="datetime-local"
-                  value={editStartTime}
-                  onChange={(e) => setEditStartTime(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <label>End Time</label>
-                <Input
-                  type="datetime-local"
-                  value={editEndTime}
-                  onChange={(e) => setEditEndTime(e.target.value)}
-                />
-              </div>
-              {editingSession && (
-                <div className="space-y-2">
-                  <label>Duration</label>
-                  <Slider
-                    defaultValue={[editingSession.duration]}
-                    max={24 * 60 * 60} // 24 hours in seconds
-                    step={60} // 1 minute
-                    onValueChange={([value]) => {
-                      // Update end time based on slider
-                      const startTime = new Date(editStartTime)
-                      const newEndTime = new Date(startTime.getTime() + value * 1000)
-                      setEditEndTime(newEndTime.toISOString().slice(0, 16))
-                    }}
-                  />
-                  <div className="text-sm text-muted-foreground">
-                    Duration: {formatDuration(editingSession.duration * 1000)}
-                  </div>
-                </div>
-              )}
-              <button
-                onClick={updateSession}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 rounded-md"
-              >
-                Update Session
-              </button>
-            </div>
-          </DialogContent>
-        </Dialog>
-
+        {/* Dialogs */}
+        <NewSessionDialog 
+          open={isDialogOpen} 
+          onOpenChange={setIsDialogOpen} 
+          sessionName={sessionName}
+          setSessionName={setSessionName}
+          customStartTime={customStartTime}
+          setCustomStartTime={setCustomStartTime}
+          customEndTime={customEndTime}
+          setCustomEndTime={setCustomEndTime}
+          startSession={startSession}
+        />
+        <EditSessionDialog 
+          open={isEditDialogOpen} 
+          onOpenChange={setIsEditDialogOpen} 
+          session={editingSession}
+          editName={editName}
+          setEditName={setEditName}
+          editStartTime={editStartTime}
+          setEditStartTime={setEditStartTime}
+          editEndTime={editEndTime}
+          setEditEndTime={setEditEndTime}
+          updateSession={updateSession}
+        />
         <SignInDialog 
           open={isSignInDialogOpen} 
           onOpenChange={setIsSignInDialogOpen} 
