@@ -17,7 +17,7 @@ import { SignInDialog } from "@/components/sign-in-dialog"
 import { ActiveSession } from "@/components/active-session"
 import { formatDuration, formatExactDuration, toLocalISOString, fromLocalISOString } from "@/lib/utils"
 import { createBackend } from '@/lib/backend'
-import type { Project, WorkSession } from '@/lib/types'
+import type { Project, WorkSession, User } from '@/lib/types'
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 
@@ -33,6 +33,7 @@ export default function Home() {
   const [customEndTime, setCustomEndTime] = useState<string>('')
   const [activeSession, setActiveSession] = useState<WorkSession | null>(null)
   const [showUniverseMode, setShowUniverseMode] = useState(false)
+  const [currentUser, setCurrentUser] = useState<User | null>(null)
 
   // For editing sessions
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
@@ -43,6 +44,14 @@ export default function Home() {
 
   const supabase = createClient()
   const backend = createBackend()
+
+  useEffect(() => {
+    const loadUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      setCurrentUser(user)
+    }
+    loadUser()
+  }, [])
 
   useEffect(() => {
     const loadProjects = async () => {
@@ -98,8 +107,7 @@ export default function Home() {
   const startSession = async () => {
     if (!selectedProjectId || !sessionName.trim()) return
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    if (!currentUser) {
       setIsSignInDialogOpen(true)
       return
     }
@@ -108,23 +116,21 @@ export default function Home() {
       const startTime = customStartTime 
         ? fromLocalISOString(customStartTime)
         : new Date().toISOString()
-      
-      const endTime = customEndTime 
+      const endTime = customEndTime
         ? fromLocalISOString(customEndTime)
         : null
 
-      const duration = endTime 
+      const duration = endTime
         ? Math.floor((new Date(endTime).getTime() - new Date(startTime).getTime()) / 1000)
         : 0
 
       const session = await backend.createSession({
         project_id: selectedProjectId,
         name: sessionName.trim(),
-        category: 'work',
-        duration: duration,
+        duration,
         created_at: startTime,
         ended_at: endTime,
-        created_by: user.id
+        created_by: currentUser.id
       }, showUniverseMode)
 
       if (!endTime) {
@@ -132,10 +138,10 @@ export default function Home() {
         setActiveSession(session)
       }
 
-      setIsDialogOpen(false)
       setSessionName('')
       setCustomStartTime('')
       setCustomEndTime('')
+      setIsDialogOpen(false)
 
       // Refresh sessions if the project is expanded
       if (expandedProjectId === selectedProjectId) {
@@ -146,11 +152,7 @@ export default function Home() {
         }))
       }
     } catch (error) {
-      if (error instanceof Error && error.message === 'Must be logged in to create a session') {
-        setIsSignInDialogOpen(true)
-      } else {
-        console.error('Error creating session:', error)
-      }
+      console.error('Error starting session:', error)
     }
   }
 
@@ -207,15 +209,8 @@ export default function Home() {
   }
 
   const initiateSession = async (projectId: number) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    
-    if (!user) {
+    if (!currentUser) {
       setIsSignInDialogOpen(true)
-      return
-    }
-
-    if (activeSession) {
-      alert('Please end the current session before starting a new one')
       return
     }
 
@@ -272,40 +267,64 @@ export default function Home() {
             <Label htmlFor="universe-mode">Universe Mode</Label>
           </div>
         </div>
-        {projects.map((project) => (
-          <div key={project.id} className="border rounded-lg overflow-hidden transition-all duration-200 hover:border-primary/20">
-            <div 
-              className="flex items-center justify-between p-6 cursor-pointer hover:bg-secondary/50 transition-colors"
-              onClick={() => toggleProject(project.id)}
-            >
-              <div>
-                <h2 className="text-xl font-semibold">{project.name}</h2>
-                <p className="text-sm text-muted-foreground">{project.description}</p>
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    initiateSession(project.id)
-                  }}
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2 rounded-md text-sm"
-                >
-                  Start Session
-                </button>
-              </div>
-            </div>
 
-            {/* Sessions List */}
-            {expandedProjectId === project.id && (
-              <div className="border-t p-6">
-                <SessionList
-                  sessions={projectSessions[project.id] || []}
-                  onEditSession={openEditDialog}
-                />
+        {projects.map((project) => {
+          const isExpanded = expandedProjectId === project.id
+          const sessions = projectSessions[project.id] || []
+          const isOwnProject = currentUser?.id === project.created_by
+
+          return (
+            <div 
+              key={project.id} 
+              className={`border rounded-lg overflow-hidden transition-all duration-200 ${
+                isExpanded ? 'border-primary' : 'hover:border-primary/20'
+              } ${
+                !isOwnProject ? 'bg-secondary/5' : ''
+              }`}
+            >
+              <div 
+                className={`p-4 cursor-pointer ${
+                  isExpanded ? 'bg-primary/5' : 'hover:bg-accent'
+                }`} 
+                onClick={() => toggleProject(project.id)}
+              >
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="text-lg font-semibold">
+                      {project.name}
+                      {!isOwnProject && (
+                        <span className="ml-2 text-sm text-muted-foreground">
+                          (by another user)
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">{project.description}</p>
+                  </div>
+                  {isOwnProject && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        initiateSession(project.id)
+                      }}
+                      className="px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
+                    >
+                      New Session
+                    </button>
+                  )}
+                </div>
               </div>
-            )}
-          </div>
-        ))}
+
+              {isExpanded && sessions.length > 0 && (
+                <div className="p-4 border-t">
+                  <SessionList 
+                    sessions={sessions}
+                    onEditSession={openEditDialog}
+                  />
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
 
       {/* Start Session Dialog */}

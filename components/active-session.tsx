@@ -3,13 +3,22 @@
 import { useState, useRef, useEffect } from "react"
 import { formatExactDuration } from "@/lib/utils"
 import type { WorkSession } from "@/lib/types"
+import { createClient } from '@/utils/supabase/client'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { ChevronDown, ChevronUp, Check, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import type { User } from '@supabase/supabase-js'
+
+const REACTIONS = ['👍', '🎉', '❤️', '🚀', '💪', '🌟']
 
 interface ActiveSessionProps {
   session: WorkSession
   onEnd: () => void
-  onUpdate: (updates: Partial<WorkSession>) => void
+  onUpdate: (updates: Partial<WorkSession>) => Promise<void>
   variant?: 'compact' | 'full'
 }
 
@@ -23,7 +32,18 @@ export function ActiveSession({
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(session.name)
   const [elapsedTime, setElapsedTime] = useState(0)
+  const [isReactionOpen, setIsReactionOpen] = useState(false)
+  const [currentUser, setCurrentUser] = useState<User | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user }}) => {
+      setCurrentUser(user)
+    })
+  }, [])
+
+  const isOwnSession = currentUser?.id === session.created_by
 
   // Update elapsed time every second
   useEffect(() => {
@@ -73,14 +93,18 @@ export function ActiveSession({
     setEditValue(session.name)
   }
 
+  const handleReaction = (emoji: string) => {
+    console.log('Reacting with:', emoji, 'to session:', session.id)
+    setIsReactionOpen(false)
+  }
+
   if (variant === 'compact') {
     return (
-      <div className="fixed bottom-4 right-4 bg-primary text-primary-foreground px-6 py-4 rounded-lg shadow-lg flex items-center space-x-4">
-        <div>
-          <div 
-            className="text-sm font-medium mb-1 cursor-pointer" 
-            onDoubleClick={handleDoubleClick}
-          >
+      <div className={`flex items-center justify-between p-3 rounded-md ${
+        isOwnSession ? 'bg-primary/10' : 'bg-secondary/20'
+      }`}>
+        <div className="space-y-1">
+          <p className="text-sm font-medium">
             {isEditing ? (
               <div className="flex items-center space-x-2">
                 <Input
@@ -97,25 +121,64 @@ export function ActiveSession({
                   <X size={14} />
                 </button>
               </div>
-            ) : session.name}
-          </div>
-          <div className="text-2xl font-bold font-mono">{formatExactDuration(elapsedTime)}</div>
+            ) : (
+              <span 
+                className="text-sm font-medium cursor-pointer" 
+                onDoubleClick={handleDoubleClick}
+              >
+                {session.name}
+              </span>
+            )}
+            {!isOwnSession && (
+              <span className="ml-2 text-xs text-muted-foreground">
+                (by another user)
+              </span>
+            )}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {formatExactDuration(elapsedTime)}
+          </p>
         </div>
-        <button
-          onClick={onEnd}
-          className="bg-primary-foreground/10 hover:bg-primary-foreground/20 text-primary-foreground px-4 py-2 rounded-md transition-colors"
-        >
-          End Session
-        </button>
+        {!isOwnSession ? (
+          <Popover open={isReactionOpen} onOpenChange={setIsReactionOpen}>
+            <PopoverTrigger asChild>
+              <button className="px-3 py-1 text-sm rounded-md bg-secondary hover:bg-secondary/80">
+                Yap!
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-fit p-2">
+              <div className="flex gap-2">
+                {REACTIONS.map(emoji => (
+                  <button
+                    key={emoji}
+                    onClick={() => handleReaction(emoji)}
+                    className="text-xl hover:scale-125 transition-transform"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+        ) : (
+          <button
+            onClick={onEnd}
+            className="px-3 py-1 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            End Session
+          </button>
+        )}
       </div>
     )
   }
 
   return (
-    <div className="mb-8 bg-primary text-primary-foreground rounded-lg shadow-lg overflow-hidden">
-      <div className="px-8 py-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-6">
+    <div className={`p-4 rounded-lg ${
+      isOwnSession ? 'bg-primary/10' : 'bg-secondary/20'
+    }`}>
+      <div className="flex justify-between items-start mb-4">
+        <div>
+          <h3 className="text-lg font-semibold">
             {isEditing ? (
               <div className="flex items-center space-x-2">
                 <Input
@@ -139,34 +202,64 @@ export function ActiveSession({
                 </button>
               </div>
             ) : (
-              <h2 
-                className="text-2xl font-semibold cursor-pointer hover:text-primary-foreground/90 transition-colors" 
+              <span 
+                className="text-2xl font-semibold cursor-pointer" 
                 onDoubleClick={handleDoubleClick}
               >
                 {session.name}
-              </h2>
+              </span>
             )}
-            <button
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="text-primary-foreground/80 hover:text-primary-foreground transition-colors"
-            >
-              {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-            </button>
-          </div>
-          <div className="flex items-center space-x-8">
-            <div className="text-4xl font-bold font-mono tracking-tight">
-              {formatExactDuration(elapsedTime)}
-            </div>
+            {!isOwnSession && (
+              <span className="ml-2 text-sm text-muted-foreground">
+                (by another user)
+              </span>
+            )}
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            Started at {new Date(session.created_at).toLocaleTimeString()}
+          </p>
+        </div>
+        <div className="flex items-center space-x-6">
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="text-primary-foreground/80 hover:text-primary-foreground transition-colors"
+          >
+            {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+          </button>
+          {!isOwnSession ? (
+            <Popover open={isReactionOpen} onOpenChange={setIsReactionOpen}>
+              <PopoverTrigger asChild>
+                <button className="px-4 py-2 rounded-md bg-secondary hover:bg-secondary/80">
+                  Yap!
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-fit p-2">
+                <div className="flex gap-2">
+                  {REACTIONS.map(emoji => (
+                    <button
+                      key={emoji}
+                      onClick={() => handleReaction(emoji)}
+                      className="text-xl hover:scale-125 transition-transform"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+          ) : (
             <button
               onClick={onEnd}
-              className="bg-primary-foreground/10 hover:bg-primary-foreground/20 px-6 py-3 rounded-md transition-colors text-lg"
+              className="px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
             >
               End Session
             </button>
-          </div>
+          )}
         </div>
       </div>
-      
+      <div className="text-3xl font-bold">
+        {formatExactDuration(elapsedTime)}
+      </div>
       {isExpanded && (
         <div className="px-8 py-6 bg-primary-foreground/5 border-t border-primary-foreground/10">
           <div className="grid grid-cols-2 gap-8">
