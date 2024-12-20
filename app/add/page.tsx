@@ -4,11 +4,25 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { NavBar } from "@/components/nav-bar"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 
 interface Project {
   name: string
   description: string
   header_img: string
+  is_public: boolean
+  is_open: boolean
 }
 
 export default function AddProjects() {
@@ -18,10 +32,13 @@ export default function AddProjects() {
       name: '',
       description: '',
       header_img: '',
+      is_public: true,
+      is_open: true,
     }
   ])
   const [existingProjects, setExistingProjects] = useState<Array<Project & { id: number }>>([])
   const [uploading, setUploading] = useState(false)
+  const [currentUser, setCurrentUser] = useState<any>(null)
 
   const supabase = createClient()
 
@@ -30,6 +47,8 @@ export default function AddProjects() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
         router.push('/auth/sign-in')
+      } else {
+        setCurrentUser(session.user)
       }
     }
     checkAuth()
@@ -70,7 +89,7 @@ export default function AddProjects() {
     }
   }, [])
 
-  const handleChange = (index: number, field: keyof Project, value: string) => {
+  const handleChange = (index: number, field: keyof Project, value: string | boolean) => {
     const newProjects = [...projects]
     newProjects[index][field] = value
     setProjects(newProjects)
@@ -100,7 +119,6 @@ export default function AddProjects() {
       handleChange(index, 'header_img', publicUrl)
     } catch (error) {
       console.error('Error uploading image:', error)
-      alert('Error uploading image')
     } finally {
       setUploading(false)
     }
@@ -108,115 +126,132 @@ export default function AddProjects() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    const { error } = await supabase
-      .from('projects')
-      .insert(projects)
 
-    if (error) {
-      console.error('Error inserting projects:', error)
-      alert('Failed to insert projects')
-    } else {
-      alert('Projects inserted successfully!')
-      setProjects([
-        { name: '', description: '', header_img: '' }
-      ])
-      const { data } = await supabase
+    if (!currentUser) {
+      console.error('No user logged in')
+      return
+    }
+
+    const validProjects = projects.filter(p => p.name.trim() !== '')
+
+    if (validProjects.length === 0) {
+      alert('Please fill in at least one project name')
+      return
+    }
+
+    for (const project of validProjects) {
+      const { error } = await supabase
         .from('projects')
-        .select('*')
-        .order('id', { ascending: false })
-      if (data) {
-        setExistingProjects(data)
+        .insert([{
+          ...project,
+          created_by: currentUser.id
+        }])
+
+      if (error) {
+        console.error('Error inserting project:', error)
       }
     }
+
+    router.push('/')
   }
 
   return (
-    <div className="container mx-auto p-4">
+    <div className="container mx-auto py-6 space-y-8">
       <NavBar />
-      <h1 className="text-3xl font-bold mb-8">Add Project</h1>
-      <form onSubmit={handleSubmit} className="space-y-8">
-        {projects.map((project, index) => (
-          <div key={index} className="p-6 border rounded-lg space-y-4">
-            <h2 className="text-xl font-semibold">Project Details</h2>
-            
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Name
-                <input
-                  type="text"
-                  value={project.name}
-                  onChange={(e) => handleChange(index, 'name', e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                  required
-                />
-              </label>
-            </div>
+      
+      <div className="max-w-2xl mx-auto space-y-8">
+        <h1 className="text-4xl font-bold">Add Projects</h1>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Description
-                <textarea
-                  value={project.description}
-                  onChange={(e) => handleChange(index, 'description', e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                  rows={3}
-                  required
-                />
-              </label>
-            </div>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {projects.map((project, index) => (
+            <Card key={index}>
+              <CardHeader>
+                <CardTitle>Project Details</CardTitle>
+                <CardDescription>Fill in the details for your new project</CardDescription>
+              </CardHeader>
+              
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor={`name-${index}`}>Name</Label>
+                  <Input
+                    id={`name-${index}`}
+                    value={project.name}
+                    onChange={(e) => handleChange(index, 'name', e.target.value)}
+                    placeholder="Project name"
+                    required
+                  />
+                </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Header Image
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) handleImageUpload(index, file)
-                  }}
-                  className="mt-1 block w-full"
-                  disabled={uploading}
-                />
-              </label>
-              {project.header_img && (
-                <img
-                  src={project.header_img}
-                  alt="Project header preview"
-                  className="mt-2 h-32 w-full object-cover rounded-md"
-                />
-              )}
-            </div>
-          </div>
-        ))}
-        
-        <button
-          type="submit"
-          disabled={uploading}
-          className="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:bg-gray-400"
-        >
-          {uploading ? 'Uploading...' : 'Submit Project'}
-        </button>
-      </form>
+                <div className="space-y-2">
+                  <Label htmlFor={`description-${index}`}>Description</Label>
+                  <Textarea
+                    id={`description-${index}`}
+                    value={project.description}
+                    onChange={(e) => handleChange(index, 'description', e.target.value)}
+                    placeholder="Project description"
+                  />
+                </div>
 
-      <div className="mt-16">
-        <h2 className="text-2xl font-bold mb-6">Existing Projects</h2>
-        <div className="space-y-6">
-          {existingProjects.map((project) => (
-            <div key={project.id} className="p-6 border rounded-lg">
-              {project.header_img && (
-                <img
-                  src={project.header_img}
-                  alt={project.name}
-                  className="w-full h-32 object-cover rounded-md mb-4"
-                />
-              )}
-              <h3 className="text-xl font-semibold mb-2">{project.name}</h3>
-              <p className="text-gray-600">{project.description}</p>
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`header-${index}`}>Header Image</Label>
+                  <Input
+                    id={`header-${index}`}
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) handleImageUpload(index, file)
+                    }}
+                    disabled={uploading}
+                  />
+                </div>
+
+                <div className="space-y-4 pt-4">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor={`public-${index}`}>Public Project</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Allow others to see this project
+                      </p>
+                    </div>
+                    <Switch
+                      id={`public-${index}`}
+                      checked={project.is_public}
+                      onCheckedChange={(checked) => handleChange(index, 'is_public', checked)}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor={`open-${index}`}>Open Project</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Allow others to join this project
+                      </p>
+                    </div>
+                    <Switch
+                      id={`open-${index}`}
+                      checked={project.is_open}
+                      onCheckedChange={(checked) => handleChange(index, 'is_open', checked)}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           ))}
-        </div>
+
+          <div className="flex justify-end gap-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => router.push('/')}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={uploading}>
+              {uploading ? 'Uploading...' : 'Create Project'}
+            </Button>
+          </div>
+        </form>
       </div>
     </div>
   )
