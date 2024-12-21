@@ -389,12 +389,13 @@ export default function Home() {
           {/* Activity Tabs */}
           <Tabs defaultValue="week" className="space-y-4">
             <TabsList>
-              <TabsTrigger value="week">This Week</TabsTrigger>
               <TabsTrigger value="projects">Projects</TabsTrigger>
+              <TabsTrigger value="week">Activity</TabsTrigger>
             </TabsList>
-            
             <TabsContent value="week" className="space-y-4">
-              <div className="flex items-center gap-4">
+              <h2 className="text-2xl font-bold mb-4">Weekly Activity</h2>
+              <div className="flex items-center justify-between">
+                <p className="text-muted-foreground">View your work sessions over the past week</p>
                 <Label className="flex items-center gap-2">
                   <Switch
                     checked={metric === 'duration'}
@@ -470,7 +471,7 @@ export default function Home() {
             onOpenChange={setIsSignInDialogOpen}
           />
 
-          <FeedbackButton 
+          <FeedbackButton
             currentUser={currentUser}
             onSignInClick={() => setIsSignInDialogOpen(true)}
           />
