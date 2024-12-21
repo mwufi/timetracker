@@ -7,16 +7,16 @@ import { NewSessionDialog } from '@/components/new-session-dialog'
 import { EditSessionDialog } from '@/components/edit-session-dialog'
 import { SignInDialog } from '@/components/sign-in-dialog'
 import { ProjectList } from '@/components/project-list'
-import { formatExactDuration } from '@/lib/utils'
 import { Globe } from 'lucide-react'
 import type { Project, WorkSession, User } from '@/lib/types'
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
-import { cn } from '@/lib/utils'
 import { useToast } from "@/hooks/use-toast"
 import { BottomNav } from '@/components/bottom-nav'
 import { createClient } from '@/utils/supabase/client'
 import { createBackend } from '@/lib/backend'
+import { ContributionsGrid } from '@/components/contributions-grid'
+import { DaySessionsList } from '@/components/day-sessions-list'
 
 export default function Home() {
   // State for projects with their sessions included
@@ -36,6 +36,8 @@ export default function Home() {
   const [editName, setEditName] = useState('')
   const [editStartTime, setEditStartTime] = useState('')
   const [editEndTime, setEditEndTime] = useState('')
+  const [metric, setMetric] = useState<'count' | 'duration'>('duration')
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const { toast } = useToast()
 
   const supabase = createClient()
@@ -322,104 +324,147 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen pb-20 md:pb-6">
-      <div className="container max-w-5xl mx-auto px-4 py-6 space-y-8">
-        <NavBar />
-        
-        {/* Active Sessions */}
+    <div className="min-h-screen bg-background">
+      <NavBar currentUser={currentUser} onSignInClick={() => setIsSignInDialogOpen(true)} />
+      <main className="container mx-auto p-4 pb-24">
         <div className="space-y-6">
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <h2 className="text-xl font-semibold">Your Active Session</h2>
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="universe-mode"
-                checked={showUniverseMode}
-                onCheckedChange={setShowUniverseMode}
+          {/* Stats and Contributions Overview */}
+          <div className="space-y-4">
+            <h1 className="text-2xl font-semibold tracking-tight">Your Activity</h1>
+            <div className="rounded-lg border bg-card p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-medium">Contributions</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Your work sessions over time
+                  </p>
+                </div>
+                <Switch
+                  checked={metric === 'duration'}
+                  onCheckedChange={(checked) => setMetric(checked ? 'duration' : 'count')}
+                  className="ml-auto"
+                />
+                <Label className="ml-2 text-sm">
+                  Show {metric === 'duration' ? 'Duration' : 'Count'}
+                </Label>
+              </div>
+              <ContributionsGrid 
+                sessions={projects.flatMap(p => p.sessions.map(s => ({ ...s, project: p })))}
+                metric={metric}
+                selectedDate={selectedDate}
+                onSelectDate={setSelectedDate}
+                className="w-full"
               />
-              <Label htmlFor="universe-mode" className="flex items-center space-x-2">
-                <Globe className="h-4 w-4" />
-                <span className="hidden sm:inline">Universe Mode</span>
-              </Label>
+              {selectedDate && (
+                <DaySessionsList
+                  date={selectedDate}
+                  sessions={projects
+                    .flatMap(p => p.sessions.map(s => ({ ...s, project: p })))
+                    .filter(s => new Date(s.created_at).toISOString().split('T')[0] === selectedDate)
+                    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                  }
+                  className="mt-6 pt-6 border-t"
+                />
+              )}
             </div>
           </div>
 
-          {activeSessions.filter(s => s.created_by === currentUser?.id).length > 0 && (
-            <div className="space-y-4">
-              {activeSessions
-                .filter(s => s.created_by === currentUser?.id)
-                .map(session => (
-                  <ActiveSession
-                    key={session.id}
-                    session={session}
-                    onEnd={() => endSession(session)}
-                    onUpdate={async (updates) => {
-                      const updatedSession = await backend.updateSession(session.id, updates, showUniverseMode)
-                      setActiveSessions(prev => prev.map(s => 
-                        s.id === updatedSession.id ? updatedSession : s
-                      ))
-                    }}
-                    variant="full"
-                  />
-                ))}
+          {/* Active Sessions */}
+          <div className="space-y-6">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <h2 className="text-xl font-semibold">Your Active Session</h2>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="universe-mode"
+                  checked={showUniverseMode}
+                  onCheckedChange={setShowUniverseMode}
+                />
+                <Label htmlFor="universe-mode" className="flex items-center space-x-2">
+                  <Globe className="h-4 w-4" />
+                  <span className="hidden sm:inline">Universe Mode</span>
+                </Label>
+              </div>
             </div>
-          )}
 
-          {/* Other Active Sessions (Universe Mode) */}
-          {showUniverseMode && activeSessions.filter(s => s.created_by !== currentUser?.id).length > 0 && (
-            <div className="space-y-3">
-              <h2 className="text-xl font-semibold">Active Sessions Around the Universe</h2>
-              {activeSessions
-                .filter(s => s.created_by !== currentUser?.id)
-                .map(session => (
-                  <ActiveSession
-                    key={session.id}
-                    session={session}
-                    variant="universe"
-                  />
-                ))}
-            </div>
-          )}
+            {activeSessions.filter(s => s.created_by === currentUser?.id).length > 0 && (
+              <div className="space-y-4">
+                {activeSessions
+                  .filter(s => s.created_by === currentUser?.id)
+                  .map(session => (
+                    <ActiveSession
+                      key={session.id}
+                      session={session}
+                      onEnd={() => endSession(session)}
+                      onUpdate={async (updates) => {
+                        const updatedSession = await backend.updateSession(session.id, updates, showUniverseMode)
+                        setActiveSessions(prev => prev.map(s => 
+                          s.id === updatedSession.id ? updatedSession : s
+                        ))
+                      }}
+                      variant="full"
+                    />
+                  ))}
+              </div>
+            )}
+
+            {/* Other Active Sessions (Universe Mode) */}
+            {showUniverseMode && activeSessions.filter(s => s.created_by !== currentUser?.id).length > 0 && (
+              <div className="space-y-3">
+                <h2 className="text-xl font-semibold">Active Sessions Around the Universe</h2>
+                {activeSessions
+                  .filter(s => s.created_by !== currentUser?.id)
+                  .map(session => (
+                    <ActiveSession
+                      key={session.id}
+                      session={session}
+                      variant="universe"
+                    />
+                  ))}
+              </div>
+            )}
+          </div>
+
+          {/* Projects List */}
+          <ProjectList
+            projects={projects}
+            currentUser={currentUser}
+            expandedProjectId={expandedProjectId}
+            onToggleProject={toggleProject}
+            onNewSession={handleNewSession}
+            onEditSession={handleEditSession}
+          />
+
+          {/* Dialogs */}
+          <NewSessionDialog 
+            open={isDialogOpen} 
+            onOpenChange={setIsDialogOpen} 
+            sessionName={sessionName}
+            setSessionName={setSessionName}
+            customStartTime={customStartTime}
+            setCustomStartTime={setCustomStartTime}
+            customEndTime={customEndTime}
+            setCustomEndTime={setCustomEndTime}
+            startSession={startSession}
+          />
+          <EditSessionDialog 
+            open={isEditDialogOpen} 
+            onOpenChange={setIsEditDialogOpen} 
+            session={editingSession}
+            editName={editName}
+            setEditName={setEditName}
+            editStartTime={editStartTime}
+            setEditStartTime={setEditStartTime}
+            editEndTime={editEndTime}
+            setEditEndTime={setEditEndTime}
+            updateSession={updateSession}
+          />
+          <SignInDialog 
+            open={isSignInDialogOpen} 
+            onOpenChange={setIsSignInDialogOpen} 
+          />
         </div>
+      </main>
 
-        {/* Projects List */}
-        <ProjectList
-          projects={projects}
-          currentUser={currentUser}
-          expandedProjectId={expandedProjectId}
-          onToggleProject={toggleProject}
-          onNewSession={handleNewSession}
-          onEditSession={handleEditSession}
-        />
-
-        {/* Dialogs */}
-        <NewSessionDialog 
-          open={isDialogOpen} 
-          onOpenChange={setIsDialogOpen} 
-          sessionName={sessionName}
-          setSessionName={setSessionName}
-          customStartTime={customStartTime}
-          setCustomStartTime={setCustomStartTime}
-          customEndTime={customEndTime}
-          setCustomEndTime={setCustomEndTime}
-          startSession={startSession}
-        />
-        <EditSessionDialog 
-          open={isEditDialogOpen} 
-          onOpenChange={setIsEditDialogOpen} 
-          session={editingSession}
-          editName={editName}
-          setEditName={setEditName}
-          editStartTime={editStartTime}
-          setEditStartTime={setEditStartTime}
-          editEndTime={editEndTime}
-          setEditEndTime={setEditEndTime}
-          updateSession={updateSession}
-        />
-        <SignInDialog 
-          open={isSignInDialogOpen} 
-          onOpenChange={setIsSignInDialogOpen} 
-        />
-      </div>
       <BottomNav />
     </div>
   )
