@@ -16,7 +16,7 @@ import { BottomNav } from '@/components/bottom-nav'
 import { createClient } from '@/utils/supabase/client'
 import { createBackend } from '@/lib/backend'
 import { ContributionsGrid } from '@/components/contributions-grid'
-import { DaySessionsList } from '@/components/day-sessions-list'
+import { DaySessionsTabs } from '@/components/day-sessions-tabs'
 
 export default function Home() {
   // State for projects with their sessions included
@@ -116,12 +116,12 @@ export default function Home() {
             return [session, ...prev]
           })
           // Update project sessions
-          setProjects(prev => prev.map(project => 
+          setProjects(prev => prev.map(project =>
             project.id === session.project_id
               ? {
-                  ...project,
-                  sessions: [session, ...project.sessions.filter(s => s.id !== session.id).slice(0, 4)]
-                }
+                ...project,
+                sessions: [session, ...project.sessions.filter(s => s.id !== session.id).slice(0, 4)]
+              }
               : project
           ))
         } else if (payload.eventType === 'UPDATE') {
@@ -134,23 +134,23 @@ export default function Home() {
             return prev.map(s => s.id === session.id ? session : s)
           })
           // Update project sessions
-          setProjects(prev => prev.map(project => 
+          setProjects(prev => prev.map(project =>
             project.id === session.project_id
               ? {
-                  ...project,
-                  sessions: project.sessions.map(s => s.id === session.id ? session : s)
-                }
+                ...project,
+                sessions: project.sessions.map(s => s.id === session.id ? session : s)
+              }
               : project
           ))
         } else if (payload.eventType === 'DELETE') {
           setActiveSessions(prev => prev.filter(s => s.id !== session.id))
           // Update project sessions
-          setProjects(prev => prev.map(project => 
+          setProjects(prev => prev.map(project =>
             project.id === session.project_id
               ? {
-                  ...project,
-                  sessions: project.sessions.filter(s => s.id !== session.id)
-                }
+                ...project,
+                sessions: project.sessions.filter(s => s.id !== session.id)
+              }
               : project
           ))
         }
@@ -193,7 +193,7 @@ export default function Home() {
     if (!selectedProjectId || !sessionName.trim()) return
 
     try {
-      const startTime = customStartTime 
+      const startTime = customStartTime
         ? new Date(customStartTime).toISOString()
         : new Date().toISOString()
       const endTime = customEndTime
@@ -225,7 +225,7 @@ export default function Home() {
       // Refresh sessions if the project is expanded
       if (expandedProjectId === selectedProjectId) {
         const sessions = await backend.getSessions(selectedProjectId, showUniverseMode)
-        setProjects(prev => prev.map(project => 
+        setProjects(prev => prev.map(project =>
           project.id === selectedProjectId
             ? { ...project, sessions: sessions }
             : project
@@ -244,13 +244,13 @@ export default function Home() {
       ended_at: endTime,
       duration: duration
     }, showUniverseMode)
-    
+
     setActiveSessions(prev => prev.filter(s => s.id !== session.id))
 
     // Refresh sessions if the project is expanded
     if (expandedProjectId === session.project_id) {
       const sessions = await backend.getSessions(session.project_id, showUniverseMode)
-      setProjects(prev => prev.map(project => 
+      setProjects(prev => prev.map(project =>
         project.id === session.project_id
           ? { ...project, sessions: sessions }
           : project
@@ -291,7 +291,7 @@ export default function Home() {
 
     const startTime = new Date(editStartTime).toISOString()
     const endTime = editEndTime ? new Date(editEndTime).toISOString() : null
-    const duration = endTime 
+    const duration = endTime
       ? Math.floor((new Date(endTime).getTime() - new Date(startTime).getTime()) / 1000)
       : 0
 
@@ -303,11 +303,11 @@ export default function Home() {
     }, showUniverseMode)
 
     setIsEditDialogOpen(false)
-    
+
     // Refresh sessions if the project is expanded
     if (expandedProjectId === editingSession.project_id) {
       const sessions = await backend.getSessions(editingSession.project_id, showUniverseMode)
-      setProjects(prev => prev.map(project => 
+      setProjects(prev => prev.map(project =>
         project.id === editingSession.project_id
           ? { ...project, sessions: sessions }
           : project
@@ -348,7 +348,7 @@ export default function Home() {
                   Show {metric === 'duration' ? 'Duration' : 'Count'}
                 </Label>
               </div>
-              <ContributionsGrid 
+              <ContributionsGrid
                 sessions={projects.flatMap(p => p.sessions.map(s => ({ ...s, project: p })))}
                 metric={metric}
                 selectedDate={selectedDate}
@@ -356,11 +356,16 @@ export default function Home() {
                 className="w-full"
               />
               {selectedDate && (
-                <DaySessionsList
+                <DaySessionsTabs
                   date={selectedDate}
                   sessions={projects
                     .flatMap(p => p.sessions.map(s => ({ ...s, project: p })))
-                    .filter(s => new Date(s.created_at).toISOString().split('T')[0] === selectedDate)
+                    .filter(s => {
+                      // Convert UTC to local timezone for comparison
+                      const sessionDate = new Date(s.created_at)
+                      const localDate = new Date(sessionDate.getTime() - sessionDate.getTimezoneOffset() * 60000)
+                      return localDate.toISOString().split('T')[0] === selectedDate
+                    })
                     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                   }
                   className="mt-6 pt-6 border-t"
@@ -397,7 +402,7 @@ export default function Home() {
                       onEnd={() => endSession(session)}
                       onUpdate={async (updates) => {
                         const updatedSession = await backend.updateSession(session.id, updates, showUniverseMode)
-                        setActiveSessions(prev => prev.map(s => 
+                        setActiveSessions(prev => prev.map(s =>
                           s.id === updatedSession.id ? updatedSession : s
                         ))
                       }}
@@ -435,9 +440,9 @@ export default function Home() {
           />
 
           {/* Dialogs */}
-          <NewSessionDialog 
-            open={isDialogOpen} 
-            onOpenChange={setIsDialogOpen} 
+          <NewSessionDialog
+            open={isDialogOpen}
+            onOpenChange={setIsDialogOpen}
             sessionName={sessionName}
             setSessionName={setSessionName}
             customStartTime={customStartTime}
@@ -446,9 +451,9 @@ export default function Home() {
             setCustomEndTime={setCustomEndTime}
             startSession={startSession}
           />
-          <EditSessionDialog 
-            open={isEditDialogOpen} 
-            onOpenChange={setIsEditDialogOpen} 
+          <EditSessionDialog
+            open={isEditDialogOpen}
+            onOpenChange={setIsEditDialogOpen}
             session={editingSession}
             editName={editName}
             setEditName={setEditName}
@@ -458,9 +463,9 @@ export default function Home() {
             setEditEndTime={setEditEndTime}
             updateSession={updateSession}
           />
-          <SignInDialog 
-            open={isSignInDialogOpen} 
-            onOpenChange={setIsSignInDialogOpen} 
+          <SignInDialog
+            open={isSignInDialogOpen}
+            onOpenChange={setIsSignInDialogOpen}
           />
         </div>
       </main>

@@ -18,35 +18,37 @@ interface ContributionsGridProps {
   className?: string
 }
 
-export function ContributionsGrid({ 
-  sessions, 
-  metric, 
+export function ContributionsGrid({
+  sessions,
+  metric,
   selectedDate,
   onSelectDate,
-  className 
+  className
 }: ContributionsGridProps) {
   const gridData = useMemo(() => {
     // Get dates for the last 7 days
     const today = new Date()
     const startDate = new Date(today)
     startDate.setDate(startDate.getDate() - 6) // 7 days including today
-    
+
     // Create a map of dates to session data
-    const dateMap = new Map<string, { 
+    const dateMap = new Map<string, {
       count: number
       duration: number
       sessions: (WorkSession & { project: Project })[]
     }>()
-    
+
     // Initialize all dates in the range
     for (let d = new Date(startDate); d <= today; d.setDate(d.getDate() + 1)) {
       const dateKey = d.toISOString().split('T')[0]
       dateMap.set(dateKey, { count: 0, duration: 0, sessions: [] })
     }
-    
+
     // Populate with actual session data
     sessions.forEach(session => {
-      const dateKey = new Date(session.created_at).toISOString().split('T')[0]
+      const sessionDate = new Date(session.created_at)
+      const localDate = new Date(sessionDate.getTime() - sessionDate.getTimezoneOffset() * 60000)
+      const dateKey = localDate.toISOString().split('T')[0]
       const existing = dateMap.get(dateKey)
       if (existing) {
         existing.count += 1
@@ -58,7 +60,7 @@ export function ContributionsGrid({
         existing.sessions.push(session)
       }
     })
-    
+
     // Convert to array of days
     return Array.from(dateMap.entries()).map(([date, data]) => ({
       date,
