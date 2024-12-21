@@ -326,8 +326,8 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background">
       <NavBar currentUser={currentUser} onSignInClick={() => setIsSignInDialogOpen(true)} />
-      <main className="container mx-auto p-4 pb-24">
-        <div className="space-y-6">
+      <main className="container mx-auto p-4 pb-24 flex min-h-screen flex-col items-center">
+        <div className="w-full max-w-3xl space-y-8">
           {/* Stats and Contributions Overview */}
           <div className="space-y-4">
             <h1 className="text-2xl font-semibold tracking-tight">Your Activity</h1>
