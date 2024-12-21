@@ -1,10 +1,9 @@
-"use client"
+'use client'
 
 import { useState, useEffect } from "react"
 import { Bar, BarChart, XAxis, YAxis, Tooltip } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartConfig, ChartContainer } from "@/components/ui/chart"
-import { NavBar } from "@/components/nav-bar"
 import { formatDuration } from "@/lib/utils"
 import { createBackend } from "@/lib/backend"
 
@@ -65,7 +64,6 @@ export default function StatsPage() {
 
   return (
     <div className="container mx-auto p-4">
-      <NavBar />
       <div className="grid gap-4 md:grid-cols-3 mb-8">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

@@ -24,6 +24,13 @@ export function NavBar() {
           >
             Add Session
           </Link>
+          <Link
+            href="/ideas"
+            className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+          >
+            Ideas
+          </Link>
+
         </div>
       </div>
       <NavUser />
