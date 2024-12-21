@@ -16,6 +16,7 @@ import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 import { createClient } from '@/utils/supabase/client'
 import { createBackend } from '@/lib/backend'
+import { applyUniverseFilter } from '@/lib/filters'
 import type { Project, WorkSession, User } from '@/lib/types'
 import { Globe } from 'lucide-react'
 import { BottomNav } from '@/components/bottom-nav'
@@ -53,6 +54,11 @@ export default function Home() {
         const { data: { user } } = await supabase.auth.getUser()
         setCurrentUser(user)
 
+        // Force universe mode when signed out
+        if (!user) {
+          setShowUniverseMode(true)
+        }
+
         // Get all projects with their recent sessions in a single query
         const { data: projectsData, error: projectsError } = await supabase
           .from('projects')
@@ -78,15 +84,12 @@ export default function Home() {
 
         setProjects(projectsWithSessions)
 
-        // Get active sessions
-        const { data: activeSessions, error: activeError } = await supabase
-          .from('work_sessions')
-          .select('*')
-          .is('ended_at', null)
-          .order('created_at', { ascending: false })
+        // Get active sessions using backend method
+        const activeSessions = await backend.getActiveSession(true) // Always fetch all sessions
+        setActiveSessions(applyUniverseFilter(activeSessions, user, !user || showUniverseMode))
 
-        if (activeError) throw activeError
-        setActiveSessions(activeSessions)
+        // Filter projects based on universe mode
+        setProjects(applyUniverseFilter(projectsWithSessions, user, !user || showUniverseMode))
       } catch (error) {
         console.error('Error loading initial data:', error)
         toast({
@@ -163,6 +166,15 @@ export default function Home() {
       supabase.removeChannel(channel)
     }
   }, [supabase])
+
+  // Update active sessions when universe mode changes
+  useEffect(() => {
+    const updateActiveSessions = async () => {
+      const activeSessions = await backend.getActiveSession(true)
+      setActiveSessions(applyUniverseFilter(activeSessions, currentUser, !currentUser || showUniverseMode))
+    }
+    updateActiveSessions()
+  }, [showUniverseMode, currentUser])
 
   const toggleProject = (id: number) => {
     setExpandedProjectId(prev => prev === id ? null : id)
@@ -368,6 +380,7 @@ export default function Home() {
               <Switch
                 checked={showUniverseMode}
                 onCheckedChange={setShowUniverseMode}
+                disabled={!currentUser}
               />
               Universe Mode
             </Label>
@@ -380,7 +393,8 @@ export default function Home() {
                 <ActiveSession
                   key={session.id}
                   session={session}
-                  onEnd={() => endSession(session)}
+                  onEnd={session.created_by === currentUser?.id ? () => endSession(session) : undefined}
+                  variant={session.created_by !== currentUser?.id ? 'universe' : 'full'}
                 />
               ))}
             </div>
