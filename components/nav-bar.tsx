@@ -30,7 +30,12 @@ export function NavBar() {
           >
             Ideas
           </Link>
-
+          <Link
+            href="/todos"
+            className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+          >
+            Todos
+          </Link>
         </div>
       </div>
       <NavUser />
