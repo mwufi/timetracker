@@ -401,7 +401,7 @@ export default function Home() {
           )}
 
           {/* Activity Tabs */}
-          <Tabs defaultValue="week" className="space-y-4">
+          <Tabs defaultValue="projects" className="space-y-4">
             <TabsList>
               <TabsTrigger value="projects">Projects</TabsTrigger>
               <TabsTrigger value="week">Activity</TabsTrigger>
