@@ -17,7 +17,7 @@ export function FeedbackButton({ currentUser, onSignInClick }: FeedbackButtonPro
   return (
     <>
       <motion.div
-        className="fixed bottom-6 right-6"
+        className="fixed bottom-12 right-6"
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
       >
